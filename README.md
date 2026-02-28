@@ -7,6 +7,11 @@
 - Definir el producto, el dominio y la arquitectura antes del scaffolding tecnico.
 - Demostrar practicas de ingenieria aplicadas: `DDD`, `Hexagonal Architecture`, `ADR`, documentacion viva y evolucion incremental de infraestructura.
 
+## Modo didactico
+Este repositorio se mantiene en modo didactico. El codigo nuevo debe priorizar claridad pedagogica: contexto por archivo, comentarios cercanos al codigo, nombres explicitos y explicaciones de como cada pieza encaja en la arquitectura.
+
+Las instrucciones persistentes para agentes y asistentes viven en `AGENTS.md` y `.github/copilot-instructions.md`. Cuando varias lineas simples forman un unico paso, pueden agruparse bajo un comentario corto para evitar ruido visual innecesario.
+
 ## Decisiones
 - `Cipher` es el antagonista; el jugador es un detective de `TRACE`.
 - El primer ejecutable planeado es `CLI-first`, `local-first`.
