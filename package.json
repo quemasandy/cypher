@@ -1,0 +1,17 @@
+{
+  "name": "cypher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "demo": "node apps/cli/src/index.js",
+    "test": "node --test"
+  }
+}

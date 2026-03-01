@@ -1,0 +1,12 @@
+{
+  "name": "@cipher/infra",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "dependencies": {
+    "@cipher/contracts": "file:../contracts",
+    "@cipher/domain": "file:../domain"
+  }
+}
