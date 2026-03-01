@@ -12,6 +12,25 @@ Este repositorio se mantiene en modo didactico. El codigo nuevo debe priorizar c
 
 Las instrucciones persistentes para agentes y asistentes viven en `AGENTS.md` y `.github/copilot-instructions.md`. Cuando varias lineas simples forman un unico paso, pueden agruparse bajo un comentario corto para evitar ruido visual innecesario.
 
+## Primer vertical ejecutable
+La primera base de codigo ya existe como un `vertical slice` pequeno y didactico:
+- `packages/domain/` contiene el aggregate root `Case`, estados, value objects y entidades de soporte.
+- `packages/application/` contiene `StartCase` y `GetCaseStatus`.
+- `packages/contracts/` define los puertos abstractos.
+- `packages/infra/` contiene adapters `in-memory`.
+- `apps/cli/` contiene la demo ejecutable en terminal.
+
+### Comandos
+```bash
+npm install
+npm test
+npm run demo
+```
+
+### Walkthroughs
+- `docs/walkthroughs/first-vertical-slice.md`
+- `docs/templates/file-walkthrough-template.md`
+
 ## Decisiones
 - `Cipher` es el antagonista; el jugador es un detective de `TRACE`.
 - El primer ejecutable planeado es `CLI-first`, `local-first`.
