@@ -12,5 +12,10 @@ export type {
   StartCaseDependencies,
   StartCaseInput
 } from "./start-case.js";
+export { VisitLocation } from "./visit-location.js";
+export type {
+  VisitLocationDependencies,
+  VisitLocationInput
+} from "./visit-location.js";
 export { toCaseStatusView } from "./case-status-view.js";
 export type { CaseStatusView } from "./case-status-view.js";

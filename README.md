@@ -15,10 +15,10 @@ Las instrucciones persistentes para agentes y asistentes viven en `AGENTS.md` y 
 ## Primer vertical ejecutable
 La primera base de codigo ya existe como un `vertical slice` pequeno y didactico:
 - `packages/domain/` contiene el aggregate root `Case`, estados, value objects y entidades de soporte.
-- `packages/application/` contiene `StartCase` y `GetCaseStatus`.
+- `packages/application/` contiene `StartCase`, `VisitLocation` y `GetCaseStatus`.
 - `packages/contracts/` define los puertos abstractos.
 - `packages/infra/` contiene adapters `in-memory`.
-- `apps/cli/` contiene la demo ejecutable en terminal.
+- `apps/cli/` contiene la demo ejecutable en terminal con una primera accion investigativa real.
 
 ### Comandos
 ```bash

@@ -8,6 +8,9 @@ import { DomainRuleViolationError } from "./domain-rule-violation-error.js";
 import { Agent, Artifact, CaseId, Cipher, City } from "./supporting-types.js";
 import { TimeBudgetHours } from "./time-budget-hours.js";
 
+// En el MVP la visita consume un costo fijo para mantener el modelo simple y didactico.
+const LOCATION_VISIT_TIME_COST_HOURS = 4;
+
 export interface CaseOpenedDomainEvent {
   type: "CaseOpened";
   caseId: string;
@@ -15,12 +18,33 @@ export interface CaseOpenedDomainEvent {
   remainingTimeHours: number;
 }
 
-export type CaseDomainEvent = CaseOpenedDomainEvent;
+export interface LocationVisitedDomainEvent {
+  type: "LocationVisited";
+  caseId: string;
+  cityId: string;
+  locationId: string;
+  remainingTimeHours: number;
+}
+
+export interface ClueCollectedDomainEvent {
+  type: "ClueCollected";
+  caseId: string;
+  cityId: string;
+  locationId: string;
+  clueType: string;
+  clueSummary: string;
+}
+
+export type CaseDomainEvent =
+  | CaseOpenedDomainEvent
+  | LocationVisitedDomainEvent
+  | ClueCollectedDomainEvent;
 
 export interface AvailableLocationSnapshot {
   id: string;
   name: string;
-  clueSummary: string;
+  isVisited: boolean;
+  clueSummary: string | null;
 }
 
 export interface CaseStatusSnapshot {
@@ -247,6 +271,66 @@ export class Case {
   }
 
   /**
+   * Este metodo modela la primera accion investigativa real del juego.
+   * Solo permite visitar locaciones de la ciudad actual mientras el caso esta investigandose.
+   */
+  visitLocation(locationId: string): void {
+    // La visita de locaciones pertenece al loop principal de investigacion.
+    this.ensureStateIs(
+      CaseState.INVESTIGATING,
+      "Locations can only be visited while investigating the case."
+    );
+
+    // Resolvemos la ciudad actual para verificar que la locacion exista dentro del contexto activo.
+    const currentCity = this.getCurrentCity();
+
+    // Buscamos la locacion solicitada dentro de la ciudad actual, no en todo el mundo del caso.
+    const locationToVisit = currentCity.locations.find((location) => location.id === locationId);
+
+    // Fallamos si la locacion no pertenece a la ciudad actual del agente.
+    if (!locationToVisit) {
+      throw new DomainRuleViolationError(
+        "The selected location does not exist in the current city."
+      );
+    }
+
+    // Evitamos duplicar tiempo, visitas y pistas sobre la misma locacion.
+    if (this.visitedLocationIds.includes(locationToVisit.id)) {
+      throw new DomainRuleViolationError(
+        "A location cannot be visited twice within the same case."
+      );
+    }
+
+    // Consumimos tiempo antes de registrar los efectos para mantener la secuencia del dominio explicita.
+    this.remainingTime = this.remainingTime.spend(LOCATION_VISIT_TIME_COST_HOURS);
+
+    // Registramos la locacion como ya inspeccionada dentro del aggregate.
+    this.visitedLocationIds.push(locationToVisit.id);
+
+    // Incorporamos la pista revelada al historial plano del caso.
+    this.collectedClues.push(locationToVisit.clue.summary);
+
+    // Emitimos el evento de visita para adapters o telemetria futura.
+    this.recordDomainEvent({
+      type: "LocationVisited",
+      caseId: this.id.value,
+      cityId: currentCity.id,
+      locationId: locationToVisit.id,
+      remainingTimeHours: this.remainingTime.value
+    });
+
+    // Emitimos un evento separado para dejar visible la incorporacion de informacion al caso.
+    this.recordDomainEvent({
+      type: "ClueCollected",
+      caseId: this.id.value,
+      cityId: currentCity.id,
+      locationId: locationToVisit.id,
+      clueType: locationToVisit.clue.type,
+      clueSummary: locationToVisit.clue.summary
+    });
+  }
+
+  /**
    * Este metodo construye una vista plana y segura del estado del aggregate.
    * Es util para la capa de aplicacion y para pruebas iniciales.
    */
@@ -254,17 +338,24 @@ export class Case {
     // Resolvemos la ciudad actual una sola vez para reutilizarla en la vista.
     const currentCity = this.getCurrentCity();
 
-    // Resolvemos los nombres de locaciones visitadas desde el estado actual del aggregate.
-    const visitedLocationNames = currentCity.locations
+    // Resolvemos las locaciones visitadas en todo el caso para que la vista no dependa de la ciudad actual.
+    const visitedLocationNames = this.cities
+      .flatMap((city) => city.locations)
       .filter((location) => this.visitedLocationIds.includes(location.id))
       .map((location) => location.name);
 
-    // Transformamos las locaciones disponibles en una forma simple para adapters.
-    const availableLocations = currentCity.locations.map((location) => ({
-      id: location.id,
-      name: location.name,
-      clueSummary: location.clue.summary
-    }));
+    // Transformamos las locaciones de la ciudad actual en una vista que oculte pistas no descubiertas.
+    const availableLocations = currentCity.locations.map((location) => {
+      // Resolver aqui el flag evita que cada adapter de interfaz replique la misma regla.
+      const isVisited = this.visitedLocationIds.includes(location.id);
+
+      return {
+        id: location.id,
+        name: location.name,
+        isVisited,
+        clueSummary: isVisited ? location.clue.summary : null
+      };
+    });
 
     // Devolvemos un objeto plano para evitar que la capa de aplicacion exponga entidades completas.
     return {

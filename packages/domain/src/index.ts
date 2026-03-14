@@ -6,15 +6,16 @@ export { Case } from "./case.js";
 export type {
   AvailableLocationSnapshot,
   CaseDomainEvent,
+  ClueCollectedDomainEvent,
   CaseOpenedDomainEvent,
   CaseProps,
   CaseResolution,
   CaseStatusSnapshot,
   CaseWarrant,
-  BriefingCaseProps
+  BriefingCaseProps,
+  LocationVisitedDomainEvent
 } from "./case.js";
 export { CaseState } from "./case-state.js";
-export type { CaseState } from "./case-state.js";
 export { DomainRuleViolationError } from "./domain-rule-violation-error.js";
 export {
   Agent,

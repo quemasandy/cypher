@@ -10,7 +10,6 @@ function createUnimplementedMessage(methodName: string): string {
 
 export interface DomainEvent {
   type: string;
-  [key: string]: unknown;
 }
 
 export type TelemetryPayload = Record<string, unknown>;
