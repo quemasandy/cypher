@@ -10,8 +10,13 @@
     "apps/*",
     "packages/*"
   ],
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
   "scripts": {
-    "demo": "node apps/cli/src/index.js",
-    "test": "node --test"
+    "build": "tsc -b",
+    "demo": "npm run build && node apps/cli/dist/index.js",
+    "test": "npm run build && node --test dist-tests/tests/**/*.test.js"
   }
 }

@@ -1,0 +1,263 @@
+/**
+ * Este archivo reune las entidades y value objects pequenos del dominio.
+ * Se agrupan aqui para que la primera base de codigo siga siendo facil de recorrer
+ * sin perder la separacion entre soporte de dominio y aggregate root.
+ */
+import { DomainRuleViolationError } from "./domain-rule-violation-error.js";
+
+export interface TraitProps {
+  code: string;
+  label: string;
+}
+
+/**
+ * `CaseId` encapsula la identidad del aggregate root.
+ */
+export class CaseId {
+  readonly value: string;
+
+  constructor(value: string) {
+    // Exigimos un string no vacio para evitar ids ambiguos en repositorios y eventos.
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new DomainRuleViolationError("CaseId must be a non-empty string.");
+    }
+
+    // Guardamos la representacion normalizada del identificador.
+    this.value = value.trim();
+  }
+}
+
+/**
+ * `Trait` representa una caracteristica util para la futura warrant.
+ */
+export class Trait {
+  readonly code: string;
+  readonly label: string;
+
+  constructor({ code, label }: TraitProps) {
+    // El `code` sirve como identificador estable y debe ser obligatorio.
+    if (typeof code !== "string" || code.trim().length === 0) {
+      throw new DomainRuleViolationError("Trait code must be a non-empty string.");
+    }
+
+    // La etiqueta visible ayuda a que CLI, tests y futuras UIs muestren el rasgo con claridad.
+    if (typeof label !== "string" || label.trim().length === 0) {
+      throw new DomainRuleViolationError("Trait label must be a non-empty string.");
+    }
+
+    // Persistimos ambas propiedades como parte del valor del rasgo.
+    this.code = code.trim();
+    this.label = label.trim();
+  }
+}
+
+export interface AgentProps {
+  id: string;
+  name: string;
+  agency: string;
+}
+
+/**
+ * `Agent` representa al detective activo del caso.
+ */
+export class Agent {
+  readonly id: string;
+  readonly name: string;
+  readonly agency: string;
+
+  constructor({ id, name, agency }: AgentProps) {
+    // El identificador del agente permite referenciarlo sin depender del nombre.
+    if (typeof id !== "string" || id.trim().length === 0) {
+      throw new DomainRuleViolationError("Agent id must be a non-empty string.");
+    }
+
+    // El nombre del agente se usa en las vistas y mensajes del caso.
+    if (typeof name !== "string" || name.trim().length === 0) {
+      throw new DomainRuleViolationError("Agent name must be a non-empty string.");
+    }
+
+    // La agencia deja el modelo alineado con el setting de TRACE desde el inicio.
+    if (typeof agency !== "string" || agency.trim().length === 0) {
+      throw new DomainRuleViolationError("Agent agency must be a non-empty string.");
+    }
+
+    // Guardamos el estado validado de la entidad.
+    this.id = id.trim();
+    this.name = name.trim();
+    this.agency = agency.trim();
+  }
+}
+
+export interface CipherProps {
+  alias: string;
+  traits: ReadonlyArray<Trait>;
+}
+
+/**
+ * `Cipher` representa al objetivo central del caso.
+ */
+export class Cipher {
+  readonly alias: string;
+  readonly traits: Trait[];
+
+  constructor({ alias, traits }: CipherProps) {
+    // El alias del objetivo es parte importante de la fantasia del juego.
+    if (typeof alias !== "string" || alias.trim().length === 0) {
+      throw new DomainRuleViolationError("Cipher alias must be a non-empty string.");
+    }
+
+    // El dominio exige al menos un rasgo para que haya base de investigacion y warrant.
+    if (!Array.isArray(traits) || traits.length === 0) {
+      throw new DomainRuleViolationError("Cipher must have at least one trait.");
+    }
+
+    // Validamos que todos los rasgos sean instancias del value object correcto.
+    if (!traits.every((trait) => trait instanceof Trait)) {
+      throw new DomainRuleViolationError("Cipher traits must be Trait instances.");
+    }
+
+    // Persistimos el alias.
+    this.alias = alias.trim();
+
+    // Copiamos el arreglo para no compartir una referencia mutable desde afuera.
+    this.traits = [...traits];
+  }
+}
+
+export interface LocationClue {
+  type: string;
+  summary: string;
+}
+
+export interface LocationProps {
+  id: string;
+  name: string;
+  clue: LocationClue;
+}
+
+/**
+ * `Location` representa un punto investigable dentro de una ciudad.
+ */
+export class Location {
+  readonly id: string;
+  readonly name: string;
+  readonly clue: LocationClue;
+
+  constructor({ id, name, clue }: LocationProps) {
+    // El id permite relacionar visitas y futuras pistas con un lugar concreto.
+    if (typeof id !== "string" || id.trim().length === 0) {
+      throw new DomainRuleViolationError("Location id must be a non-empty string.");
+    }
+
+    // El nombre del lugar se mostrara directamente en la CLI y futuras UIs.
+    if (typeof name !== "string" || name.trim().length === 0) {
+      throw new DomainRuleViolationError("Location name must be a non-empty string.");
+    }
+
+    // La primera base del codigo ya exige una pista minima por ubicacion.
+    if (typeof clue !== "object" || clue === null) {
+      throw new DomainRuleViolationError("Location clue must be an object.");
+    }
+
+    // El tipo de pista ayuda a preparar la futura clasificacion route/trait/noise.
+    if (typeof clue.type !== "string" || clue.type.trim().length === 0) {
+      throw new DomainRuleViolationError("Location clue type must be a non-empty string.");
+    }
+
+    // El resumen semantico permite mostrar la pista sin exponer una estructura mas compleja todavia.
+    if (typeof clue.summary !== "string" || clue.summary.trim().length === 0) {
+      throw new DomainRuleViolationError("Location clue summary must be a non-empty string.");
+    }
+
+    // Guardamos el estado validado de la locacion.
+    this.id = id.trim();
+    this.name = name.trim();
+    this.clue = {
+      type: clue.type.trim(),
+      summary: clue.summary.trim()
+    };
+  }
+}
+
+export interface CityProps {
+  id: string;
+  name: string;
+  locations: ReadonlyArray<Location>;
+}
+
+/**
+ * `City` agrupa las locaciones disponibles para la investigacion.
+ */
+export class City {
+  readonly id: string;
+  readonly name: string;
+  readonly locations: Location[];
+
+  constructor({ id, name, locations }: CityProps) {
+    // El id de ciudad es obligatorio para el historial de viajes y el estado del caso.
+    if (typeof id !== "string" || id.trim().length === 0) {
+      throw new DomainRuleViolationError("City id must be a non-empty string.");
+    }
+
+    // El nombre de la ciudad sirve como dato de presentacion y de lectura del mapa mental del caso.
+    if (typeof name !== "string" || name.trim().length === 0) {
+      throw new DomainRuleViolationError("City name must be a non-empty string.");
+    }
+
+    // El primer vertical exige al menos una locacion para que la ciudad sea investigable.
+    if (!Array.isArray(locations) || locations.length === 0) {
+      throw new DomainRuleViolationError("City must contain at least one location.");
+    }
+
+    // Verificamos que las locaciones pertenezcan al tipo correcto.
+    if (!locations.every((location) => location instanceof Location)) {
+      throw new DomainRuleViolationError("City locations must be Location instances.");
+    }
+
+    // Persistimos la identidad de la ciudad.
+    this.id = id.trim();
+
+    // Persistimos el nombre visible.
+    this.name = name.trim();
+
+    // Copiamos la lista para evitar mutaciones externas accidentales.
+    this.locations = [...locations];
+  }
+}
+
+export interface ArtifactProps {
+  id: string;
+  name: string;
+  historicalOrigin: string;
+}
+
+/**
+ * `Artifact` representa el objetivo material que motiva el caso.
+ */
+export class Artifact {
+  readonly id: string;
+  readonly name: string;
+  readonly historicalOrigin: string;
+
+  constructor({ id, name, historicalOrigin }: ArtifactProps) {
+    // El id del artefacto sirve como identidad estable del objeto robado.
+    if (typeof id !== "string" || id.trim().length === 0) {
+      throw new DomainRuleViolationError("Artifact id must be a non-empty string.");
+    }
+
+    // El nombre visible del artefacto se usa en briefing y status.
+    if (typeof name !== "string" || name.trim().length === 0) {
+      throw new DomainRuleViolationError("Artifact name must be a non-empty string.");
+    }
+
+    // El origen historico ayuda a enriquecer el mundo desde el primer ejemplo jugable.
+    if (typeof historicalOrigin !== "string" || historicalOrigin.trim().length === 0) {
+      throw new DomainRuleViolationError("Artifact historical origin must be a non-empty string.");
+    }
+
+    // Persistimos los datos ya validados.
+    this.id = id.trim();
+    this.name = name.trim();
+    this.historicalOrigin = historicalOrigin.trim();
+  }
+}

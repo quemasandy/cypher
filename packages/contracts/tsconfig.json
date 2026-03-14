@@ -1,0 +1,14 @@
+// Este archivo compila el paquete de contratos.
+// Su existencia deja explicito que los puertos son un artefacto propio del sistema
+// y deben publicarse como tipos y runtime independiente del resto de capas.
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

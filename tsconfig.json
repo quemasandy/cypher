@@ -1,0 +1,14 @@
+// Este archivo es la solucion de TypeScript del monorepo.
+// No compila codigo por si mismo: solo declara el orden de construccion entre
+// paquetes, app CLI y tests para que `tsc -b` respete los limites arquitectonicos.
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/domain" },
+    { "path": "./packages/contracts" },
+    { "path": "./packages/application" },
+    { "path": "./packages/infra" },
+    { "path": "./apps/cli" },
+    { "path": "./tsconfig.tests.json" }
+  ]
+}

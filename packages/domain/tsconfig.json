@@ -1,0 +1,14 @@
+// Este archivo define como se compila el paquete de dominio.
+// El dominio emite artefactos propios para seguir siendo una capa reutilizable
+// y consumible por aplicacion, infraestructura y tests sin depender de fuentes crudas.
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

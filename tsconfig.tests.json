@@ -1,0 +1,20 @@
+// Este archivo compila los tests de Node del repositorio.
+// Se separa de los paquetes para que las pruebas puedan emitirse a `dist-tests`
+// sin mezclar artefactos de testing con los builds publicos de cada workspace.
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": ".",
+    "outDir": "./dist-tests",
+    "tsBuildInfoFile": "./dist-tests/.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["tests/**/*.ts"],
+  "references": [
+    { "path": "./packages/domain" },
+    { "path": "./packages/contracts" },
+    { "path": "./packages/application" },
+    { "path": "./packages/infra" }
+  ]
+}

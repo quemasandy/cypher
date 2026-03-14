@@ -1,0 +1,18 @@
+// Este archivo compila el adapter de entrada por CLI.
+// Se mantiene separado para dejar claro que la interfaz es otro paquete del
+// monorepo y que su build depende de application e infra, no del dominio directo.
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../packages/application" },
+    { "path": "../../packages/infra" }
+  ]
+}

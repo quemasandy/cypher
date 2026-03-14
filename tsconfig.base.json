@@ -1,0 +1,26 @@
+// Este archivo define la configuracion base de TypeScript para todo el workspace.
+// Vive en la raiz porque centraliza reglas compartidas de compilacion, resolucion
+// de imports internos y nivel de rigor para todas las capas del proyecto.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmitOnError": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@cipher/application": ["packages/application/src/index.ts"],
+      "@cipher/contracts": ["packages/contracts/src/index.ts"],
+      "@cipher/domain": ["packages/domain/src/index.ts"],
+      "@cipher/infra": ["packages/infra/src/index.ts"]
+    }
+  }
+}

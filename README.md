@@ -23,9 +23,12 @@ La primera base de codigo ya existe como un `vertical slice` pequeno y didactico
 ### Comandos
 ```bash
 npm install
+npm run build
 npm test
 npm run demo
 ```
+
+El codigo fuente del vertical slice vive ahora en `TypeScript` y cada paquete compila sus artefactos a `dist/`. Los tests compilados se emiten a `dist-tests/` para no mezclar build de producto con build de pruebas.
 
 ### Walkthroughs
 - `docs/walkthroughs/first-vertical-slice.md`
