@@ -1,0 +1,11 @@
+{
+  "name": "@cipher/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "dependencies": {
+    "@cipher/application": "file:../../packages/application",
+    "@cipher/infra": "file:../../packages/infra"
+  }
+}

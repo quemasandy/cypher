@@ -1,0 +1,18 @@
+// Este archivo compila la capa de infraestructura inicial.
+// Infraestructura vive en su propio paquete para que los adapters puedan cambiar
+// sin alterar dominio ni aplicacion, incluso despues de la migracion a TypeScript.
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../domain" },
+    { "path": "../contracts" }
+  ]
+}

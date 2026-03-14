@@ -1,0 +1,22 @@
+{
+  "name": "cypher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "demo": "npm run build && node apps/cli/dist/index.js",
+    "test": "npm run build && node --test dist-tests/tests/**/*.test.js"
+  }
+}
