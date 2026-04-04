@@ -31,13 +31,15 @@ Congelar el lenguaje ubicuo del proyecto `Cipher`. Este documento define el sign
 - `CipherEscaped`: `Cipher` escapo por agotamiento del tiempo o deduccion incorrecta.
 
 ### Casos de uso
-- `StartCase`: crea un caso reproducible desde una `seed`.
+- `StartCase`: crea y abre un caso reproducible desde una `seed`.
 - `TravelToCity`: valida el viaje y descuenta horas.
 - `VisitLocation`: inspecciona una locacion y retorna nuevas pistas.
 - `SubmitWarrant`: valida rasgos deducidos y determina si la captura es legalmente valida.
+- `AttemptArrest`: intenta cerrar el caso en la ciudad final con la warrant emitida.
 - `GetCaseStatus`: expone el estado legible del caso para UI o CLI.
 
 ### Puertos
+- `CaseGenerator`: construye un aggregate `Case` reproducible a partir de una `seed`.
 - `CaseRepository`: almacenamiento y recuperacion del aggregate `Case`.
 - `Clock`: fuente de tiempo abstracta para reglas y pruebas.
 - `RandomnessProvider`: proveedor de aleatoriedad controlable y reproducible.

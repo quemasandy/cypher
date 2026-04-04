@@ -22,14 +22,16 @@ Cada caso comienza con el robo de un `Artifact` en una `City` inicial. El jugado
   - `Route clues`: apuntan a la siguiente ciudad o acotan el destino correcto.
   - `Trait clues`: describen rasgos necesarios para emitir la `Warrant`.
 - La mayoria de las pistas son verdaderas; un subconjunto controlado puede ser ambiguo o falso.
+- La interfaz publica del juego no debe exponer el perfil oculto completo de `Cipher`; solo evidencia ya descubierta.
 - El caso solo puede ganarse si el jugador:
   - llega a la ciudad final correcta,
   - antes de agotar el tiempo,
   - y con una `Warrant` compatible con los rasgos de `Cipher`.
+- En el slice actual del MVP, el conjunto requerido para una captura valida coincide con la lista completa de `target.traits`, pero la `Warrant` solo puede construirse con rasgos ya descubiertos en `trait clues`.
 
 ### Condiciones de victoria
 - `Cipher` es arrestado en la ciudad correcta.
-- La `Warrant` coincide con el conjunto minimo de rasgos requeridos.
+- La `Warrant` coincide con el conjunto minimo de rasgos requeridos y cada rasgo incluido estaba respaldado por evidencia descubierta.
 - El tiempo restante es mayor que cero al momento de la captura.
 
 ### Condiciones de derrota

@@ -8,7 +8,7 @@ Describir la arquitectura objetivo de `Cipher`, sus capas, responsabilidades y r
 - `Hexagonal Architecture` como patron principal.
 - `DDD` en el nucleo para modelar reglas del juego.
 - `Application layer` para orquestar casos de uso.
-- `Ports` explicitos para persistencia, aleatoriedad, tiempo, eventos y telemetria.
+- `Ports` explicitos para generacion de casos, persistencia, aleatoriedad, tiempo, eventos y telemetria.
 - `Adapters` intercambiables para `CLI`, web, almacenamiento local y cloud futura.
 
 ### Principios de acoplamiento
@@ -48,10 +48,11 @@ docs/
 #### Ports
 - Interfaces que abstraen side effects.
 - Contratos de salida que la infraestructura debe cumplir.
+- Incluyen `CaseGenerator`, `CaseRepository`, `RandomnessProvider`, `EventBus` y `Telemetry`.
 
 #### Infrastructure
 - Repositorios concretos.
-- `RandomnessProvider`, `Clock`, `EventBus`, `Telemetry` concretos.
+- `CaseGenerator`, `RandomnessProvider`, `Clock`, `EventBus`, `Telemetry` concretos.
 - Adaptadores a `SQLite`, file storage, backend HTTP o cloud futura.
 
 #### Interface
@@ -64,6 +65,7 @@ docs/
   - `TravelToCity`
   - `VisitLocation`
   - `SubmitWarrant`
+  - `AttemptArrest`
   - `GetCaseStatus`
 - Regla de salida:
   - los adapters solo consumen `DTOs` o `view models` emitidos por `Application`,

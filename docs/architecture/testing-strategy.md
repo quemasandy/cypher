@@ -16,10 +16,12 @@ Definir como se va a validar el sistema antes y durante la implementacion. La es
   - `TravelToCity`
   - `VisitLocation`
   - `SubmitWarrant`
+  - `AttemptArrest`
   - `GetCaseStatus`
 
 #### Generative / property-like tests
 - Verifican que toda `seed` valida produzca un caso resoluble.
+- Verifican que la misma `seed` reconstruya exactamente el mismo caso.
 - Detectan colisiones de ruido, rutas imposibles o budgets inviables.
 
 #### Architecture tests
@@ -28,6 +30,7 @@ Definir como se va a validar el sistema antes y durante la implementacion. La es
 
 #### Acceptance scenarios
 - Casos narrativos completos que prueban ganar, perder por tiempo y perder por warrant incorrecta.
+- Deben recorrer los mismos casos de uso que usa la CLI, no helpers paralelos del dominio.
 
 ### Cobertura objetivo
 - Prioridad alta en dominio y casos de uso.
@@ -36,6 +39,7 @@ Definir como se va a validar el sistema antes y durante la implementacion. La es
 
 ### Estrategia de doubles
 - `InMemoryCaseRepository` como adapter de prueba y de MVP.
+- `ProceduralCaseGenerator` como generador concreto del slice actual.
 - `DeterministicRandomnessProvider` para reproducir seeds.
 - `FakeClock` para controlar tiempo sin depender de reloj real.
 - `SpyEventBus` y `SpyTelemetry` para verificar side effects externos.

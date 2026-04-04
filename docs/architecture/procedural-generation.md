@@ -33,6 +33,24 @@ flowchart LR
 7. Ejecutar validadores de resolubilidad.
 8. Emitir el `Case`.
 
+### Slice actual implementado
+- El generador actual selecciona deterministicamente:
+  - 1 agente,
+  - 1 artifact,
+  - 4 ciudades unicas,
+  - 2 rasgos objetivo.
+- La topologia del MVP actual construye:
+  - 1 ruta principal `opening -> midpoint -> final`,
+  - 1 ciudad secundaria de ruido conectada a la ruta.
+- Las locaciones del slice actual siembran:
+  - `route clues` en apertura y tramo medio,
+  - `trait clues` suficientes para una warrant de dos rasgos,
+  - `noise clues` que abren una rama plausible sin romper la resolubilidad.
+- Los validadores implementados hoy protegen:
+  - ciudades distintas por rol,
+  - rasgos objetivo sin duplicados,
+  - presupuesto de tiempo suficiente para la linea ganadora minima.
+
 ### Garantias de resolubilidad
 - Existe al menos una ruta correcta hasta la ciudad final.
 - Existe evidencia suficiente para emitir una `Warrant` valida.
@@ -62,6 +80,8 @@ flowchart LR
 - `TimeBudgetValidator`
 - `NoiseBudgetValidator`
 - `DeterminismValidator`
+
+En el slice actual, `TimeBudgetValidator` y la validacion estructural viven dentro del generador, mientras que `DeterminismValidator` se fija desde pruebas reproducibles por `seed`.
 
 ## Implicaciones
 - El generador debe separarse en funciones puras y pasos validables.

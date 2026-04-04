@@ -15,10 +15,10 @@ Las instrucciones persistentes para agentes y asistentes viven en `AGENTS.md` y 
 ## Primer vertical ejecutable
 La primera base de codigo ya existe como un `vertical slice` pequeno y didactico:
 - `packages/domain/` contiene el aggregate root `Case`, estados, value objects y entidades de soporte.
-- `packages/application/` contiene `StartCase`, `VisitLocation`, `TravelToCity` y `GetCaseStatus`.
+- `packages/application/` contiene `StartCase`, `VisitLocation`, `TravelToCity`, `SubmitWarrant`, `AttemptArrest` y `GetCaseStatus`.
 - `packages/contracts/` define los puertos abstractos.
-- `packages/infra/` contiene adapters `in-memory`.
-- `apps/cli/` contiene la demo ejecutable en terminal con una primera accion investigativa y un primer viaje real.
+- `packages/infra/` contiene adapters `in-memory` y el primer generador procedural determinista por `seed`.
+- `apps/cli/` contiene la demo ejecutable en terminal con investigacion, viaje, warrant, resolucion final y arranque reproducible por `seed`.
 
 ### Comandos
 ```bash
@@ -26,6 +26,7 @@ npm install
 npm run build
 npm test
 npm run demo
+npm run demo -- tutorial-case-v1
 ```
 
 El codigo fuente del vertical slice vive ahora en `TypeScript` y cada paquete compila sus artefactos a `dist/`. Los tests compilados se emiten a `dist-tests/` para no mezclar build de producto con build de pruebas.

@@ -14,7 +14,7 @@ Traducir la vision y la arquitectura en hitos ejecutables con entregables jugabl
 - Entregable: simulacion de un caso mediante tests y fixtures.
 
 ### Fase 2 - Casos de uso
-- Implementar `StartCase`, `TravelToCity`, `VisitLocation`, `SubmitWarrant`, `GetCaseStatus`.
+- Implementar `StartCase`, `TravelToCity`, `VisitLocation`, `SubmitWarrant`, `AttemptArrest`, `GetCaseStatus`.
 - Introducir puertos y dobles deterministas.
 - Entregable: flujo completo jugable desde pruebas de aplicacion.
 

@@ -12,7 +12,8 @@ Aislar el loop central, subloops y la progresion del juego para que las decision
 5. `TravelToCity` consumiendo tiempo.
 6. Repetir hasta identificar ciudad final y rasgos de `Cipher`.
 7. `SubmitWarrant`.
-8. Resolver captura o escape.
+8. `AttemptArrest`.
+9. Resolver captura o escape.
 
 ### Secuencia del loop de investigacion
 ```mermaid

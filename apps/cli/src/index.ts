@@ -6,17 +6,19 @@
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import {
-  GetCaseStatus,
+  AttemptArrest,
   StartCase,
+  SubmitWarrant,
   TravelToCity,
   VisitLocation,
   type CaseStatusView
 } from "@cipher/application";
 import {
+  DEMO_CASE_SEED,
   InMemoryCaseRepository,
   InMemoryEventBus,
   InMemoryTelemetry,
-  createDemoBriefingCase
+  ProceduralCaseGenerator
 } from "@cipher/infra";
 
 /**
@@ -35,8 +37,34 @@ function printCaseStatus(title: string, caseStatusView: CaseStatusView): void {
   // Mostramos datos clave del contexto actual del caso.
   console.log(`State: ${caseStatusView.state}`);
   console.log(`Current city: ${caseStatusView.currentCityName}`);
-  console.log(`Target traits: ${caseStatusView.targetTraitLabels.join(", ")}`);
   console.log(`Artifact: ${caseStatusView.artifactName}`);
+
+  // Mostramos solo la evidencia de rasgos realmente descubierta por el jugador.
+  if (caseStatusView.discoveredTraitLabels.length === 0) {
+    console.log("Discovered trait evidence: none yet.");
+  } else {
+    console.log(`Discovered trait evidence: ${caseStatusView.discoveredTraitLabels.join(", ")}`);
+  }
+
+  // Mostramos la warrant emitida si el jugador ya comprometio una hipotesis.
+  if (caseStatusView.issuedWarrant === null) {
+    console.log("Issued warrant: none yet.");
+  } else {
+    console.log(
+      `Issued warrant: ${caseStatusView.issuedWarrant.suspectedTraits.map((trait) => trait.label).join(", ")}`
+    );
+  }
+
+  // Mostramos la resolucion final si el caso ya termino.
+  if (caseStatusView.resolution === null) {
+    console.log("Resolution: case still active.");
+  } else {
+    console.log(
+      `Resolution: ${caseStatusView.resolution.outcome} (${caseStatusView.resolution.cause})`
+    );
+    console.log(`Resolution summary: ${caseStatusView.resolution.summary}`);
+  }
+
   console.log("Locations in current city:");
 
   // Recorremos las locaciones disponibles para mostrar la informacion inmediata del jugador.
@@ -82,6 +110,106 @@ function printCaseStatus(title: string, caseStatusView: CaseStatusView): void {
       );
     }
   }
+}
+
+/**
+ * Este helper selecciona los rasgos que compondran la warrant.
+ * En modo no interactivo usa todos los rasgos disponibles para que la demo siga siendo determinista.
+ */
+async function chooseTraitsForWarrant(
+  caseStatusView: CaseStatusView
+): Promise<CaseStatusView["discoveredTraits"] | null> {
+  // Solo tiene sentido emitir warrant si el caso sigue en investigacion.
+  if (caseStatusView.state !== "Investigating") {
+    return null;
+  }
+
+  // Si no hay rasgos disponibles, no podemos construir una hipotesis legal.
+  if (caseStatusView.discoveredTraits.length === 0) {
+    return null;
+  }
+
+  // En entornos sin TTY tomamos todos los rasgos para mantener una demo automatizable.
+  if (!input.isTTY || !output.isTTY) {
+    return [...caseStatusView.discoveredTraits];
+  }
+
+  // Creamos una interfaz puntual para leer una eleccion del jugador.
+  const readlineInterface = createInterface({ input, output });
+
+  try {
+    console.log("Choose the traits to include in the warrant:");
+
+    for (const [index, trait] of caseStatusView.discoveredTraits.entries()) {
+      console.log(`${index + 1}. ${trait.label}`);
+    }
+
+    // Pedimos una lista separada por comas para no bloquear el soporte a warrants con varios rasgos.
+    const rawAnswer = await readlineInterface.question("Trait numbers (comma-separated): ");
+    const selectedIndexes = Array.from(
+      new Set(
+        rawAnswer
+          .split(",")
+          .map((answerChunk) => Number.parseInt(answerChunk.trim(), 10) - 1)
+          .filter(
+            (candidateIndex) =>
+              Number.isInteger(candidateIndex) &&
+              candidateIndex >= 0 &&
+              candidateIndex < caseStatusView.discoveredTraits.length
+          )
+      )
+    );
+
+    // Si la entrada no es valida, degradamos a todos los rasgos disponibles para no romper la demo.
+    if (selectedIndexes.length === 0) {
+      console.log("Invalid selection. All listed traits will be used in the warrant.");
+      return [...caseStatusView.discoveredTraits];
+    }
+
+    // Devolvemos solo los rasgos elegidos por el jugador.
+    return selectedIndexes.map((selectedIndex) => caseStatusView.discoveredTraits[selectedIndex]);
+  } finally {
+    // Cerramos la interfaz para liberar stdin/stdout correctamente.
+    readlineInterface.close();
+  }
+}
+
+/**
+ * Este helper recorre locaciones hasta alcanzar una cantidad minima de rasgos descubiertos.
+ * La demo lo usa para que la warrant se base en evidencia visible y no en informacion oculta.
+ */
+async function collectTraitEvidenceUntil(
+  visitLocation: VisitLocation,
+  caseStatusView: CaseStatusView,
+  minimumDiscoveredTraitCount: number,
+  titlePrefix: string
+): Promise<CaseStatusView> {
+  let currentCaseStatusView = caseStatusView;
+
+  // Seguimos inspeccionando mientras falte evidencia y el caso siga en investigacion activa.
+  while (
+    currentCaseStatusView.state === "Investigating" &&
+    currentCaseStatusView.discoveredTraits.length < minimumDiscoveredTraitCount
+  ) {
+    const selectedLocationId = await chooseLocationToVisit(currentCaseStatusView);
+
+    if (!selectedLocationId) {
+      return currentCaseStatusView;
+    }
+
+    currentCaseStatusView = await visitLocation.execute({
+      caseId: currentCaseStatusView.caseId,
+      locationId: selectedLocationId
+    });
+
+    console.log("");
+    printCaseStatus(
+      `${titlePrefix} (${currentCaseStatusView.discoveredTraits.length}/${minimumDiscoveredTraitCount} trait clues)`,
+      currentCaseStatusView
+    );
+  }
+
+  return currentCaseStatusView;
 }
 
 /**
@@ -183,11 +311,11 @@ async function chooseDestinationCity(caseStatusView: CaseStatusView): Promise<st
  * Esta funcion arma el grafo de dependencias del vertical slice y ejecuta la demo.
  */
 async function main(): Promise<void> {
-  // Creamos un caso inicial de demostracion en estado `Briefing`.
-  const demoCase = createDemoBriefingCase();
+  // Elegimos una `seed` fija por defecto, pero permitimos sobreescribirla desde la terminal.
+  const selectedSeed = process.argv[2] ?? DEMO_CASE_SEED;
 
-  // Creamos el repositorio `in-memory` sembrado con ese caso.
-  const caseRepository = new InMemoryCaseRepository([demoCase]);
+  // Creamos el repositorio `in-memory` vacio porque `StartCase` ahora construye el aggregate.
+  const caseRepository = new InMemoryCaseRepository();
 
   // Creamos un bus de eventos en memoria para observar lo que publica la aplicacion.
   const eventBus = new InMemoryEventBus();
@@ -195,16 +323,15 @@ async function main(): Promise<void> {
   // Creamos un collector simple de telemetria para el mismo flujo.
   const telemetry = new InMemoryTelemetry();
 
+  // Creamos el generador procedural concreto que traducira la `seed` en un caso reproducible.
+  const caseGenerator = new ProceduralCaseGenerator();
+
   // Instanciamos el caso de uso que inicia la investigacion.
   const startCase = new StartCase({
+    caseGenerator,
     caseRepository,
     eventBus,
     telemetry
-  });
-
-  // Instanciamos el caso de uso de lectura para demostrar una consulta separada.
-  const getCaseStatus = new GetCaseStatus({
-    caseRepository
   });
 
   // Instanciamos el caso de uso que revela pistas a traves de una visita real.
@@ -221,35 +348,39 @@ async function main(): Promise<void> {
     telemetry
   });
 
-  // Ejecutamos el caso de uso de inicio usando el id del aggregate sembrado.
-  await startCase.execute({
-    caseId: demoCase.id.value
+  // Instanciamos el caso de uso que registra la warrant emitida por el jugador.
+  const submitWarrant = new SubmitWarrant({
+    caseRepository,
+    eventBus,
+    telemetry
   });
 
-  // Leemos el estado abierto para mostrar el punto de partida del loop de investigacion.
-  const openedCaseStatusView = await getCaseStatus.execute({
-    caseId: demoCase.id.value
+  // Instanciamos el caso de uso que intenta cerrar el caso con la captura final.
+  const attemptArrest = new AttemptArrest({
+    caseRepository,
+    eventBus,
+    telemetry
+  });
+
+  // Ejecutamos el caso de uso de inicio usando una `seed` reproducible.
+  const openedCaseStatusView = await startCase.execute({
+    seed: selectedSeed
   });
 
   // Imprimimos la vista antes de inspeccionar una locacion.
+  console.log(`Seed: ${selectedSeed}`);
   printCaseStatus("Cipher CLI Demo", openedCaseStatusView);
 
   // Conservamos la ultima vista conocida para encadenar acciones sobre el mismo caso.
   let currentCaseStatusView = openedCaseStatusView;
 
-  // Elegimos una locacion para demostrar la primera accion investigativa del juego.
-  const selectedLocationId = await chooseLocationToVisit(currentCaseStatusView);
-
-  // Si hay una locacion pendiente, ejecutamos el comando y mostramos el nuevo estado.
-  if (selectedLocationId) {
-    currentCaseStatusView = await visitLocation.execute({
-      caseId: demoCase.id.value,
-      locationId: selectedLocationId
-    });
-
-    console.log("");
-    printCaseStatus("After Visiting Location", currentCaseStatusView);
-  }
+  // Recolectamos la primera pieza de evidencia de rasgo antes de abandonar la ciudad inicial.
+  currentCaseStatusView = await collectTraitEvidenceUntil(
+    visitLocation,
+    currentCaseStatusView,
+    1,
+    "After Collecting Initial Evidence"
+  );
 
   // Elegimos una ciudad conectada para demostrar el subloop de navegacion.
   const selectedDestinationCityId = await chooseDestinationCity(currentCaseStatusView);
@@ -257,12 +388,59 @@ async function main(): Promise<void> {
   // Si hay una conexion disponible, ejecutamos el viaje y mostramos el nuevo contexto.
   if (selectedDestinationCityId) {
     currentCaseStatusView = await travelToCity.execute({
-      caseId: demoCase.id.value,
+      caseId: currentCaseStatusView.caseId,
       destinationCityId: selectedDestinationCityId
     });
 
     console.log("");
     printCaseStatus("After Traveling To City", currentCaseStatusView);
+  }
+
+  // Recolectamos la segunda pieza de evidencia necesaria antes de comprometer la warrant.
+  currentCaseStatusView = await collectTraitEvidenceUntil(
+    visitLocation,
+    currentCaseStatusView,
+    2,
+    "After Collecting More Evidence"
+  );
+
+  // Elegimos los rasgos para demostrar el paso de deduccion legal del loop.
+  const selectedTraitsForWarrant = await chooseTraitsForWarrant(currentCaseStatusView);
+
+  // Si la warrant es aplicable en el estado actual, la emitimos y mostramos la nueva fase del caso.
+  if (selectedTraitsForWarrant) {
+    currentCaseStatusView = await submitWarrant.execute({
+      caseId: currentCaseStatusView.caseId,
+      suspectedTraits: selectedTraitsForWarrant
+    });
+
+    console.log("");
+    printCaseStatus("After Submitting Warrant", currentCaseStatusView);
+  }
+
+  // Si la warrant ya fue emitida pero aun no estamos en persecucion final, viajamos una vez mas.
+  if (currentCaseStatusView.state === "WarrantIssued") {
+    const finalChaseDestinationCityId = await chooseDestinationCity(currentCaseStatusView);
+
+    if (finalChaseDestinationCityId) {
+      currentCaseStatusView = await travelToCity.execute({
+        caseId: currentCaseStatusView.caseId,
+        destinationCityId: finalChaseDestinationCityId
+      });
+
+      console.log("");
+      printCaseStatus("After Traveling Under Warrant", currentCaseStatusView);
+    }
+  }
+
+  // Si llegamos a la fase de persecucion, intentamos el arresto final.
+  if (currentCaseStatusView.state === "Chase") {
+    currentCaseStatusView = await attemptArrest.execute({
+      caseId: currentCaseStatusView.caseId
+    });
+
+    console.log("");
+    printCaseStatus("After Attempting Arrest", currentCaseStatusView);
   }
 
   // Imprimimos evidencia de eventos y telemetria para hacer visible la orquestacion.

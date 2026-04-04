@@ -9,6 +9,7 @@ Definir el modelo del dominio de `Cipher`: aggregate root, entidades, value obje
 - Toda mutacion significativa del caso ocurre a traves de `Case`.
 - `Case` encapsula:
   - ciudad actual del agente,
+  - ciudad final correcta del caso,
   - tiempo restante,
   - historial de viajes,
   - locaciones visitadas,
@@ -81,6 +82,8 @@ classDiagram
 - No se puede visitar una locacion si el caso no esta en `Investigating` o `Chase`.
 - No se puede viajar si el tiempo restante es insuficiente para el costo de viaje.
 - No se puede emitir una `Warrant` vacia.
+- En el MVP actual, una `Warrant` correcta debe cubrir el conjunto completo de `Trait` del objetivo.
+- Un rasgo no puede entrar a la `Warrant` si no fue descubierto antes mediante una `trait clue`.
 - No se puede resolver un caso dos veces.
 - Toda `Clue` recolectada debe estar asociada a una `Location` y a una `City`.
 - El `Case` debe poder reconstruirse desde una `seed` y su historial de decisiones.
@@ -89,6 +92,7 @@ classDiagram
 - `Route clue`: reduce el espacio de ciudades posibles.
 - `Trait clue`: restringe rasgos de `Cipher`.
 - `Noise clue`: agrega incertidumbre controlada.
+- En el slice actual, una `trait clue` incluye el `Trait` que revela para que la vista publica pueda derivar evidencia sin filtrar el perfil completo del objetivo.
 - Toda pista debe incluir:
   - origen,
   - tipo,
@@ -97,6 +101,7 @@ classDiagram
   - relacion con la seed o con el generador.
 
 ### Puertos del dominio/aplicacion
+- `CaseGenerator`
 - `CaseRepository`
 - `RandomnessProvider`
 - `Clock`

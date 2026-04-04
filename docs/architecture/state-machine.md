@@ -18,11 +18,11 @@ stateDiagram-v2
     Briefing --> Investigating: StartCase
     Investigating --> Investigating: VisitLocation / TravelToCity
     Investigating --> WarrantIssued: SubmitWarrant
-    WarrantIssued --> Chase: TravelToFinalCity
-    Chase --> Resolved: ArrestSuccess
+    WarrantIssued --> Chase: TravelToCity(finalCity)
+    Chase --> Resolved: AttemptArrest / ArrestSuccess
     Investigating --> Resolved: TimeExpired
     WarrantIssued --> Resolved: TimeExpired
-    Chase --> Resolved: TimeExpired or WrongArrest
+    Chase --> Resolved: TimeExpired or AttemptArrest / WrongArrest
 ```
 
 ### Reglas por estado
@@ -57,6 +57,7 @@ stateDiagram-v2
 | `TravelToCity` | no | si | si | si | no |
 | `VisitLocation` | no | si | no | opcional | no |
 | `SubmitWarrant` | no | si | no | no | no |
+| `AttemptArrest` | no | no | no | si | no |
 | `GetCaseStatus` | si | si | si | si | si |
 
 ## Implicaciones
