@@ -12,6 +12,11 @@ export type {
   StartCaseDependencies,
   StartCaseInput
 } from "./start-case.js";
+export { TravelToCity } from "./travel-to-city.js";
+export type {
+  TravelToCityDependencies,
+  TravelToCityInput
+} from "./travel-to-city.js";
 export { VisitLocation } from "./visit-location.js";
 export type {
   VisitLocationDependencies,

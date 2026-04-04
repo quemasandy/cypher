@@ -179,10 +179,44 @@ export class Location {
   }
 }
 
+export interface CityConnectionProps {
+  destinationCityId: string;
+  travelTimeHours: number;
+}
+
+/**
+ * `CityConnection` representa una ruta disponible desde una ciudad hacia otra.
+ * Vive como value object pequeno porque el costo de viaje es parte del mapa del caso,
+ * no una decision improvisada del caso de uso.
+ */
+export class CityConnection {
+  readonly destinationCityId: string;
+  readonly travelTimeHours: number;
+
+  constructor({ destinationCityId, travelTimeHours }: CityConnectionProps) {
+    // La conexion debe apuntar a una ciudad destino concreta y referenciable.
+    if (typeof destinationCityId !== "string" || destinationCityId.trim().length === 0) {
+      throw new DomainRuleViolationError("City connection destination id must be a non-empty string.");
+    }
+
+    // El costo de viaje se modela como horas enteras para mantener el MVP discreto.
+    if (!Number.isInteger(travelTimeHours) || travelTimeHours <= 0) {
+      throw new DomainRuleViolationError("City connection travel time must be a positive whole number.");
+    }
+
+    // Persistimos el identificador del destino ya normalizado.
+    this.destinationCityId = destinationCityId.trim();
+
+    // Persistimos el costo temporal que consumira el viaje.
+    this.travelTimeHours = travelTimeHours;
+  }
+}
+
 export interface CityProps {
   id: string;
   name: string;
   locations: ReadonlyArray<Location>;
+  connections?: ReadonlyArray<CityConnection>;
 }
 
 /**
@@ -192,8 +226,9 @@ export class City {
   readonly id: string;
   readonly name: string;
   readonly locations: Location[];
+  readonly connections: CityConnection[];
 
-  constructor({ id, name, locations }: CityProps) {
+  constructor({ id, name, locations, connections = [] }: CityProps) {
     // El id de ciudad es obligatorio para el historial de viajes y el estado del caso.
     if (typeof id !== "string" || id.trim().length === 0) {
       throw new DomainRuleViolationError("City id must be a non-empty string.");
@@ -214,6 +249,16 @@ export class City {
       throw new DomainRuleViolationError("City locations must be Location instances.");
     }
 
+    // Las conexiones son opcionales porque una ciudad aislada sigue siendo valida en fixtures minimos.
+    if (!Array.isArray(connections)) {
+      throw new DomainRuleViolationError("City connections must be provided as an array.");
+    }
+
+    // Si existen conexiones, todas deben respetar el value object correcto.
+    if (!connections.every((connection) => connection instanceof CityConnection)) {
+      throw new DomainRuleViolationError("City connections must be CityConnection instances.");
+    }
+
     // Persistimos la identidad de la ciudad.
     this.id = id.trim();
 
@@ -222,6 +267,9 @@ export class City {
 
     // Copiamos la lista para evitar mutaciones externas accidentales.
     this.locations = [...locations];
+
+    // Copiamos tambien las conexiones para preservar el borde de la entidad.
+    this.connections = [...connections];
   }
 }
 

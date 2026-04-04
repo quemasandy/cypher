@@ -9,6 +9,7 @@ import {
   Case,
   CaseId,
   Cipher,
+  CityConnection,
   City,
   Location,
   TimeBudgetHours,
@@ -102,16 +103,78 @@ export function createDemoBriefingCase(): Case {
       name: "Old Airfield",
       clue: {
         type: "route",
-        summary: "A cargo manifest points toward a southern escape corridor."
+        summary: "A cargo manifest points toward Lima as the next operational stop."
       }
     })
   ];
 
-  // Construimos la ciudad inicial del primer vertical.
+  // Construimos la ciudad inicial con una conexion explicita al siguiente nodo del caso demo.
   const quito = new City({
     id: "quito",
     name: "Quito",
-    locations: quitoLocations
+    locations: quitoLocations,
+    connections: [
+      new CityConnection({
+        destinationCityId: "lima",
+        travelTimeHours: 8
+      })
+    ]
+  });
+
+  // Construimos una segunda ciudad para que la CLI ya pueda demostrar navegacion entre nodos.
+  const lima = new City({
+    id: "lima",
+    name: "Lima",
+    locations: [
+      new Location({
+        id: "harbor-warehouse",
+        name: "Harbor Warehouse",
+        clue: {
+          type: "route",
+          summary: "Shipping plans suggest a fast transfer toward Santiago."
+        }
+      }),
+      new Location({
+        id: "rare-book-market",
+        name: "Rare Book Market",
+        clue: {
+          type: "trait",
+          summary: "Booksellers describe a buyer obsessed with coded marginalia."
+        }
+      })
+    ],
+    connections: [
+      new CityConnection({
+        destinationCityId: "quito",
+        travelTimeHours: 8
+      }),
+      new CityConnection({
+        destinationCityId: "santiago",
+        travelTimeHours: 6
+      })
+    ]
+  });
+
+  // Construimos una tercera ciudad para mostrar continuidad del mapa aunque la demo aun no cierre el caso.
+  const santiago = new City({
+    id: "santiago",
+    name: "Santiago",
+    locations: [
+      new Location({
+        id: "observatory-hotel",
+        name: "Observatory Hotel",
+        clue: {
+          type: "trait",
+          summary: "A concierge recalls a guest carrying only a slim leather case."
+        }
+      })
+    ],
+    connections: [
+      new CityConnection({
+        destinationCityId: "lima",
+        travelTimeHours: 6
+      })
+    ]
   });
 
   // Construimos el aggregate root en estado `Briefing`.
@@ -132,7 +195,7 @@ export function createDemoBriefingCase(): Case {
       historicalOrigin: "Recovered from an Andean ceremonial complex."
     }),
     openingCity: quito,
-    cities: [quito],
+    cities: [quito, lima, santiago],
     timeBudgetHours: TimeBudgetHours.fromNumber(72)
   });
 }

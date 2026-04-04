@@ -1,7 +1,7 @@
 # First Vertical Slice Walkthrough
 
 ## Proposito
-Documentar la primera base de codigo ejecutable de `Cipher`. Este walkthrough explica como se conectan dominio, aplicacion, contratos, infraestructura y CLI para abrir un caso y visitar una locacion desde terminal.
+Documentar la primera base de codigo ejecutable de `Cipher`. Este walkthrough explica como se conectan dominio, aplicacion, contratos, infraestructura y CLI para abrir un caso, visitar una locacion y viajar a otra ciudad desde terminal.
 
 ## Vision general
 El vertical slice implementado recorre un flujo pequeno pero completo:
@@ -14,6 +14,8 @@ El vertical slice implementado recorre un flujo pequeno pero completo:
 7. La CLI invoca `VisitLocation` para inspeccionar una locacion de la ciudad actual.
 8. El aggregate consume tiempo, revela la pista, emite `LocationVisited` y `ClueCollected`.
 9. La aplicacion persiste el nuevo estado y la CLI imprime la vista actualizada.
+10. La CLI invoca `TravelToCity` para moverse a una ciudad conectada.
+11. El aggregate consume tiempo segun la conexion, actualiza la ciudad actual, emite `CityTraveled` y la CLI imprime el nuevo contexto.
 
 ## Mapa de archivos
 - `packages/domain/src/case.ts`
@@ -24,6 +26,8 @@ El vertical slice implementado recorre un flujo pequeno pero completo:
   - Orquesta el flujo de inicio del caso.
 - `packages/application/src/visit-location.ts`
   - Orquesta la visita de una locacion y la publicacion de eventos resultantes.
+- `packages/application/src/travel-to-city.ts`
+  - Orquesta el viaje entre ciudades conectadas y la publicacion del evento de desplazamiento.
 - `packages/application/src/get-case-status.ts`
   - Expone la lectura del estado sin mutar el dominio.
 - `packages/contracts/src/index.ts`
@@ -44,7 +48,7 @@ Cada paquete compila su salida a `dist/` y los tests se emiten a `dist-tests/` d
 `Case`, `CaseState`, `TimeBudgetHours` y los tipos de soporte viven en dominio porque representan reglas del juego y estado consistente del caso.
 
 ### Application
-`StartCase`, `VisitLocation` y `GetCaseStatus` viven en aplicacion porque coordinan el aggregate con puertos externos y producen vistas consumibles por adapters.
+`StartCase`, `VisitLocation`, `TravelToCity` y `GetCaseStatus` viven en aplicacion porque coordinan el aggregate con puertos externos y producen vistas consumibles por adapters.
 
 ### Contracts
 `CaseRepository`, `EventBus` y `Telemetry` viven en contratos porque definen que necesita la aplicacion sin decir como se implementa.
@@ -63,10 +67,9 @@ La CLI vive en `apps/cli` porque es un adapter de entrada. No modifica entidades
 5. Termina en `packages/infra/src/*` para ver como se implementan esos puertos en esta fase.
 
 ## Que todavia no existe
-- Viajes entre ciudades.
 - Warrants y resolucion final.
 - Generacion procedural por `seed`.
 - Persistencia `SQLite`.
 
 ## Por que este slice es util
-Aunque pequeno, este slice ya prueba una afirmacion arquitectonica importante: el dominio puede mutar y la aplicacion puede orquestarlo sin acoplarse a la CLI ni a una base de datos real. Ahora, ademas, el caso ya incluye una primera accion investigativa real con consumo de tiempo y revelado de pistas. Eso reduce riesgo antes de expandir el loop con viajes, warrant y resolucion.
+Aunque pequeno, este slice ya prueba una afirmacion arquitectonica importante: el dominio puede mutar y la aplicacion puede orquestarlo sin acoplarse a la CLI ni a una base de datos real. Ahora, ademas, el caso ya incluye una primera accion investigativa real con consumo de tiempo, revelado de pistas y navegacion entre ciudades conectadas. Eso reduce riesgo antes de expandir el loop con warrant y resolucion.

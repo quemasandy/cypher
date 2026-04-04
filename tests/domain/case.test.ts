@@ -104,6 +104,97 @@ test("Case.visitLocation rejects visits before the case has started", () => {
   );
 });
 
+test("Case.travelToCity changes the current city, spends time and records travel history", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso para habilitar el loop principal de investigacion.
+  caseRecord.start();
+
+  // Limpiamos los eventos de apertura para verificar solo los del viaje.
+  caseRecord.pullDomainEvents();
+
+  // Ejecutamos un viaje valido hacia la ciudad conectada desde el nodo inicial.
+  caseRecord.travelToCity("santiago");
+
+  // Leemos el snapshot actualizado para verificar la vista del aggregate.
+  const caseStatusSnapshot = caseRecord.toStatusSnapshot();
+
+  // Confirmamos que el agente haya cambiado de ciudad.
+  assert.equal(caseRecord.currentCityId, "santiago");
+
+  // Confirmamos que el tiempo haya bajado segun el costo de la conexion elegida.
+  assert.equal(caseRecord.remainingTime.value, 42);
+
+  // Confirmamos que el historial de viajes guarde una entrada explicita del desplazamiento.
+  assert.deepEqual(caseStatusSnapshot.travelHistory, [
+    {
+      fromCityId: "lima",
+      fromCityName: "Lima",
+      toCityId: "santiago",
+      toCityName: "Santiago",
+      travelTimeHours: 6
+    }
+  ]);
+
+  // Confirmamos que la nueva ciudad exponga sus propias conexiones al adapter.
+  assert.deepEqual(
+    caseStatusSnapshot.availableTravelDestinations.map((destination) => destination.id),
+    ["lima", "bogota"]
+  );
+
+  // Confirmamos que el aggregate emita el evento de viaje esperado.
+  assert.deepEqual(
+    caseRecord.pullDomainEvents().map((domainEvent) => domainEvent.type),
+    ["CityTraveled"]
+  );
+});
+
+test("Case.travelToCity rejects travel attempts before the case has started", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Verificamos que viajar en Briefing rompa la state machine.
+  assert.throws(
+    () => caseRecord.travelToCity("santiago"),
+    (error: unknown) =>
+      error instanceof DomainRuleViolationError &&
+      error.message === "Cities can only be traveled while the case is active."
+  );
+});
+
+test("Case.travelToCity rejects traveling to the current city", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso para habilitar viajes.
+  caseRecord.start();
+
+  // Confirmamos que intentar quedarse en la misma ciudad rompa una invariante del dominio.
+  assert.throws(
+    () => caseRecord.travelToCity("lima"),
+    (error: unknown) =>
+      error instanceof DomainRuleViolationError &&
+      error.message === "The agent is already in the selected city."
+  );
+});
+
+test("Case.travelToCity rejects destinations that are not connected to the current city", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso para habilitar viajes.
+  caseRecord.start();
+
+  // Confirmamos que una ciudad existente pero no conectada no pueda elegirse todavia.
+  assert.throws(
+    () => caseRecord.travelToCity("bogota"),
+    (error: unknown) =>
+      error instanceof DomainRuleViolationError &&
+      error.message === "The selected destination cannot be reached from the current city."
+  );
+});
+
 test("Case.visitLocation rejects visiting the same location twice", () => {
   // Creamos un fixture puro del dominio.
   const caseRecord = createBriefingCaseFixture();

@@ -18,6 +18,15 @@ export interface CaseOpenedDomainEvent {
   remainingTimeHours: number;
 }
 
+export interface CityTraveledDomainEvent {
+  type: "CityTraveled";
+  caseId: string;
+  fromCityId: string;
+  toCityId: string;
+  travelTimeHours: number;
+  remainingTimeHours: number;
+}
+
 export interface LocationVisitedDomainEvent {
   type: "LocationVisited";
   caseId: string;
@@ -37,6 +46,7 @@ export interface ClueCollectedDomainEvent {
 
 export type CaseDomainEvent =
   | CaseOpenedDomainEvent
+  | CityTraveledDomainEvent
   | LocationVisitedDomainEvent
   | ClueCollectedDomainEvent;
 
@@ -45,6 +55,23 @@ export interface AvailableLocationSnapshot {
   name: string;
   isVisited: boolean;
   clueSummary: string | null;
+}
+
+export interface AvailableTravelDestinationSnapshot {
+  id: string;
+  name: string;
+  travelTimeHours: number;
+}
+
+export interface TravelHistoryEntry {
+  fromCityId: string;
+  toCityId: string;
+  travelTimeHours: number;
+}
+
+export interface TravelHistorySnapshot extends TravelHistoryEntry {
+  fromCityName: string;
+  toCityName: string;
 }
 
 export interface CaseStatusSnapshot {
@@ -60,8 +87,10 @@ export interface CaseStatusSnapshot {
   currentCityName: string;
   remainingTimeHours: number;
   availableLocations: AvailableLocationSnapshot[];
+  availableTravelDestinations: AvailableTravelDestinationSnapshot[];
   visitedLocationNames: string[];
   collectedClues: string[];
+  travelHistory: TravelHistorySnapshot[];
 }
 
 export type CaseWarrant = Record<string, unknown> | null;
@@ -76,7 +105,7 @@ export interface CaseProps {
   cities: ReadonlyArray<City>;
   currentCityId: string;
   remainingTime: TimeBudgetHours;
-  travelHistory?: ReadonlyArray<string>;
+  travelHistory?: ReadonlyArray<TravelHistoryEntry>;
   visitedLocationIds?: ReadonlyArray<string>;
   collectedClues?: ReadonlyArray<string>;
   warrant?: CaseWarrant;
@@ -102,7 +131,7 @@ export class Case {
   cities: City[];
   currentCityId: string;
   remainingTime: TimeBudgetHours;
-  travelHistory: string[];
+  travelHistory: TravelHistoryEntry[];
   visitedLocationIds: string[];
   collectedClues: string[];
   warrant: CaseWarrant;
@@ -169,9 +198,76 @@ export class Case {
       throw new DomainRuleViolationError("Case remaining time must be a TimeBudgetHours instance.");
     }
 
+    // Preparamos un indice de ids para validar consistencia del grafo del caso.
+    const knownCityIds = new Set(cities.map((city) => city.id));
+
+    // Exigimos ids unicos para que viaje, historial y estado no queden ambiguos.
+    if (knownCityIds.size !== cities.length) {
+      throw new DomainRuleViolationError("Case cities must use unique city ids.");
+    }
+
     // El `currentCityId` debe apuntar a una ciudad existente dentro del agregado.
-    if (!cities.some((city) => city.id === currentCityId)) {
+    if (!knownCityIds.has(currentCityId)) {
       throw new DomainRuleViolationError("Case current city must exist within the case city list.");
+    }
+
+    // Validamos que las conexiones de viaje apunten a ciudades reales y no se dupliquen.
+    for (const city of cities) {
+      const destinationIdsSeen = new Set<string>();
+
+      for (const connection of city.connections) {
+        if (connection.destinationCityId === city.id) {
+          throw new DomainRuleViolationError("A city cannot define a travel connection to itself.");
+        }
+
+        if (!knownCityIds.has(connection.destinationCityId)) {
+          throw new DomainRuleViolationError(
+            "City connections must point to cities that exist inside the case."
+          );
+        }
+
+        if (destinationIdsSeen.has(connection.destinationCityId)) {
+          throw new DomainRuleViolationError(
+            "A city cannot define the same travel destination more than once."
+          );
+        }
+
+        destinationIdsSeen.add(connection.destinationCityId);
+      }
+    }
+
+    // Validamos que el historial de viajes sea estructuralmente coherente con el caso.
+    if (!Array.isArray(travelHistory)) {
+      throw new DomainRuleViolationError("Case travel history must be provided as an array.");
+    }
+
+    for (const travelEntry of travelHistory) {
+      if (typeof travelEntry !== "object" || travelEntry === null) {
+        throw new DomainRuleViolationError("Case travel history entries must be objects.");
+      }
+
+      if (
+        typeof travelEntry.fromCityId !== "string" ||
+        travelEntry.fromCityId.trim().length === 0 ||
+        typeof travelEntry.toCityId !== "string" ||
+        travelEntry.toCityId.trim().length === 0
+      ) {
+        throw new DomainRuleViolationError(
+          "Case travel history entries must include non-empty origin and destination city ids."
+        );
+      }
+
+      if (!Number.isInteger(travelEntry.travelTimeHours) || travelEntry.travelTimeHours <= 0) {
+        throw new DomainRuleViolationError(
+          "Case travel history entries must include a positive whole-number travel cost."
+        );
+      }
+
+      if (!knownCityIds.has(travelEntry.fromCityId) || !knownCityIds.has(travelEntry.toCityId)) {
+        throw new DomainRuleViolationError(
+          "Case travel history entries must reference cities that exist in the case."
+        );
+      }
     }
 
     // Persistimos la identidad del caso.
@@ -199,7 +295,7 @@ export class Case {
     this.remainingTime = remainingTime;
 
     // Guardamos el historial de viajes inicial o reconstruido.
-    this.travelHistory = [...travelHistory];
+    this.travelHistory = travelHistory.map((travelEntry) => ({ ...travelEntry }));
 
     // Guardamos las locaciones ya visitadas.
     this.visitedLocationIds = [...visitedLocationIds];
@@ -266,6 +362,64 @@ export class Case {
       type: "CaseOpened",
       caseId: this.id.value,
       currentCityId: this.currentCityId,
+      remainingTimeHours: this.remainingTime.value
+    });
+  }
+
+  /**
+   * Este metodo modela el desplazamiento entre ciudades conectadas.
+   * El aggregate valida el origen actual, la conectividad y el costo temporal.
+   */
+  travelToCity(destinationCityId: string): void {
+    // El viaje esta permitido durante investigacion y tambien en fases posteriores de persecucion.
+    this.ensureStateIsOneOf(
+      [CaseState.INVESTIGATING, CaseState.WARRANT_ISSUED, CaseState.CHASE],
+      "Cities can only be traveled while the case is active."
+    );
+
+    // Resolvemos la ciudad actual porque las conexiones validas dependen de ella.
+    const currentCity = this.getCurrentCity();
+
+    // Viajar a la misma ciudad no cambia estado y solo agregaria ruido semantico.
+    if (destinationCityId === currentCity.id) {
+      throw new DomainRuleViolationError("The agent is already in the selected city.");
+    }
+
+    // Buscamos una conexion explicita desde la ciudad actual hacia la solicitada.
+    const travelConnection = currentCity.connections.find(
+      (connection) => connection.destinationCityId === destinationCityId
+    );
+
+    // Si no existe conexion, el viaje viola el mapa del caso definido por el dominio.
+    if (!travelConnection) {
+      throw new DomainRuleViolationError(
+        "The selected destination cannot be reached from the current city."
+      );
+    }
+
+    // Resolvemos la ciudad destino para validar identidad y preparar la mutacion.
+    const destinationCity = this.getCityById(destinationCityId);
+
+    // Consumimos el tiempo asociado a la conexion elegida antes de mover al agente.
+    this.remainingTime = this.remainingTime.spend(travelConnection.travelTimeHours);
+
+    // Actualizamos la posicion actual del agente dentro del aggregate.
+    this.currentCityId = destinationCity.id;
+
+    // Guardamos una entrada explicita del viaje para trazabilidad y futuras vistas.
+    this.travelHistory.push({
+      fromCityId: currentCity.id,
+      toCityId: destinationCity.id,
+      travelTimeHours: travelConnection.travelTimeHours
+    });
+
+    // Emitimos un evento de dominio para que aplicacion e infraestructura observen el viaje.
+    this.recordDomainEvent({
+      type: "CityTraveled",
+      caseId: this.id.value,
+      fromCityId: currentCity.id,
+      toCityId: destinationCity.id,
+      travelTimeHours: travelConnection.travelTimeHours,
       remainingTimeHours: this.remainingTime.value
     });
   }
@@ -357,6 +511,29 @@ export class Case {
       };
     });
 
+    // Convertimos las conexiones de viaje del nodo actual en opciones legibles para adapters.
+    const availableTravelDestinations = currentCity.connections.map((connection) => {
+      const destinationCity = this.getCityById(connection.destinationCityId);
+
+      return {
+        id: destinationCity.id,
+        name: destinationCity.name,
+        travelTimeHours: connection.travelTimeHours
+      };
+    });
+
+    // Expandimos el historial de viajes con nombres legibles para no delegar mapeos a la UI.
+    const travelHistory = this.travelHistory.map((travelEntry) => {
+      const fromCity = this.getCityById(travelEntry.fromCityId);
+      const toCity = this.getCityById(travelEntry.toCityId);
+
+      return {
+        ...travelEntry,
+        fromCityName: fromCity.name,
+        toCityName: toCity.name
+      };
+    });
+
     // Devolvemos un objeto plano para evitar que la capa de aplicacion exponga entidades completas.
     return {
       caseId: this.id.value,
@@ -371,8 +548,10 @@ export class Case {
       currentCityName: currentCity.name,
       remainingTimeHours: this.remainingTime.value,
       availableLocations,
+      availableTravelDestinations,
       visitedLocationNames,
-      collectedClues: [...this.collectedClues]
+      collectedClues: [...this.collectedClues],
+      travelHistory
     };
   }
 
@@ -395,16 +574,24 @@ export class Case {
    * Este helper resuelve la ciudad actual y falla si el aggregate quedo inconsistente.
    */
   getCurrentCity(): City {
-    // Buscamos la ciudad cuyo id coincide con la posicion actual del agente.
-    const currentCity = this.cities.find((city) => city.id === this.currentCityId);
+    // Reutilizamos la misma ruta de resolucion que usa el resto del aggregate.
+    return this.getCityById(this.currentCityId);
+  }
+
+  /**
+   * Este helper resuelve cualquier ciudad del caso por id.
+   */
+  private getCityById(cityId: string): City {
+    // Buscamos la ciudad cuyo id coincide con el solicitado.
+    const city = this.cities.find((candidateCity) => candidateCity.id === cityId);
 
     // Si no existe, el aggregate quedo corrupto y debemos fallar de forma explicita.
-    if (!currentCity) {
-      throw new DomainRuleViolationError("Current city could not be resolved from the case state.");
+    if (!city) {
+      throw new DomainRuleViolationError("A referenced city could not be resolved from the case state.");
     }
 
     // Devolvemos la entidad de ciudad encontrada.
-    return currentCity;
+    return city;
   }
 
   /**
@@ -413,6 +600,16 @@ export class Case {
   private ensureStateIs(expectedState: CaseState, message: string): void {
     // Si el estado actual no coincide con el esperado, la operacion viola la state machine.
     if (this.state !== expectedState) {
+      throw new DomainRuleViolationError(message);
+    }
+  }
+
+  /**
+   * Este helper encapsula comandos permitidos en varios estados activos.
+   */
+  private ensureStateIsOneOf(expectedStates: ReadonlyArray<CaseState>, message: string): void {
+    // Si el estado actual no aparece en la lista permitida, la accion rompe la state machine.
+    if (!expectedStates.includes(this.state)) {
       throw new DomainRuleViolationError(message);
     }
   }

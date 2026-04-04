@@ -5,6 +5,7 @@
 export { Case } from "./case.js";
 export type {
   AvailableLocationSnapshot,
+  AvailableTravelDestinationSnapshot,
   CaseDomainEvent,
   ClueCollectedDomainEvent,
   CaseOpenedDomainEvent,
@@ -13,7 +14,10 @@ export type {
   CaseStatusSnapshot,
   CaseWarrant,
   BriefingCaseProps,
-  LocationVisitedDomainEvent
+  CityTraveledDomainEvent,
+  LocationVisitedDomainEvent,
+  TravelHistoryEntry,
+  TravelHistorySnapshot
 } from "./case.js";
 export { CaseState } from "./case-state.js";
 export { DomainRuleViolationError } from "./domain-rule-violation-error.js";
@@ -22,6 +26,7 @@ export {
   Artifact,
   CaseId,
   Cipher,
+  CityConnection,
   City,
   Location,
   Trait
@@ -30,6 +35,7 @@ export type {
   AgentProps,
   ArtifactProps,
   CipherProps,
+  CityConnectionProps,
   CityProps,
   LocationClue,
   LocationProps,

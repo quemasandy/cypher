@@ -8,6 +8,7 @@ import { stdin as input, stdout as output } from "node:process";
 import {
   GetCaseStatus,
   StartCase,
+  TravelToCity,
   VisitLocation,
   type CaseStatusView
 } from "@cipher/application";
@@ -55,6 +56,30 @@ function printCaseStatus(title: string, caseStatusView: CaseStatusView): void {
 
     for (const clue of caseStatusView.collectedClues) {
       console.log(`- ${clue}`);
+    }
+  }
+
+  // Mostramos los destinos de viaje conectados a la ciudad actual.
+  if (caseStatusView.availableTravelDestinations.length === 0) {
+    console.log("Travel options: none from this city.");
+  } else {
+    console.log("Travel options:");
+
+    for (const destination of caseStatusView.availableTravelDestinations) {
+      console.log(`- ${destination.name} (${destination.travelTimeHours}h)`);
+    }
+  }
+
+  // Mostramos el historial de desplazamientos para que el progreso geografico sea visible.
+  if (caseStatusView.travelHistory.length === 0) {
+    console.log("Travel history: none yet.");
+  } else {
+    console.log("Travel history:");
+
+    for (const travelEntry of caseStatusView.travelHistory) {
+      console.log(
+        `- ${travelEntry.fromCityName} -> ${travelEntry.toCityName} (${travelEntry.travelTimeHours}h)`
+      );
     }
   }
 }
@@ -108,6 +133,53 @@ async function chooseLocationToVisit(caseStatusView: CaseStatusView): Promise<st
 }
 
 /**
+ * Este helper selecciona una ciudad destino a la que viajar.
+ * En modo no interactivo elige la primera conexion disponible para mantener la demo automatizable.
+ */
+async function chooseDestinationCity(caseStatusView: CaseStatusView): Promise<string | null> {
+  // Si no hay conexiones salientes, no tiene sentido pedir una decision de viaje.
+  if (caseStatusView.availableTravelDestinations.length === 0) {
+    return null;
+  }
+
+  // En entornos sin TTY resolvemos automaticamente la primera opcion disponible.
+  if (!input.isTTY || !output.isTTY) {
+    return caseStatusView.availableTravelDestinations[0].id;
+  }
+
+  // Creamos una interfaz puntual para leer una eleccion del jugador.
+  const readlineInterface = createInterface({ input, output });
+
+  try {
+    console.log("Choose a city to travel to:");
+
+    for (const [index, destination] of caseStatusView.availableTravelDestinations.entries()) {
+      console.log(`${index + 1}. ${destination.name} (${destination.travelTimeHours}h)`);
+    }
+
+    // Pedimos el numero de opcion para mantener el flujo legible en terminal.
+    const rawAnswer = await readlineInterface.question("City number: ");
+    const selectedIndex = Number.parseInt(rawAnswer.trim(), 10) - 1;
+
+    // Si la entrada no es valida, degradamos a la primera opcion para no romper la demo.
+    if (
+      !Number.isInteger(selectedIndex) ||
+      selectedIndex < 0 ||
+      selectedIndex >= caseStatusView.availableTravelDestinations.length
+    ) {
+      console.log("Invalid selection. The first connected city will be used.");
+      return caseStatusView.availableTravelDestinations[0].id;
+    }
+
+    // Devolvemos la ciudad elegida por el jugador.
+    return caseStatusView.availableTravelDestinations[selectedIndex].id;
+  } finally {
+    // Cerramos la interfaz para liberar stdin/stdout correctamente.
+    readlineInterface.close();
+  }
+}
+
+/**
  * Esta funcion arma el grafo de dependencias del vertical slice y ejecuta la demo.
  */
 async function main(): Promise<void> {
@@ -142,6 +214,13 @@ async function main(): Promise<void> {
     telemetry
   });
 
+  // Instanciamos el caso de uso que mueve al agente entre ciudades conectadas.
+  const travelToCity = new TravelToCity({
+    caseRepository,
+    eventBus,
+    telemetry
+  });
+
   // Ejecutamos el caso de uso de inicio usando el id del aggregate sembrado.
   await startCase.execute({
     caseId: demoCase.id.value
@@ -155,18 +234,35 @@ async function main(): Promise<void> {
   // Imprimimos la vista antes de inspeccionar una locacion.
   printCaseStatus("Cipher CLI Demo", openedCaseStatusView);
 
+  // Conservamos la ultima vista conocida para encadenar acciones sobre el mismo caso.
+  let currentCaseStatusView = openedCaseStatusView;
+
   // Elegimos una locacion para demostrar la primera accion investigativa del juego.
-  const selectedLocationId = await chooseLocationToVisit(openedCaseStatusView);
+  const selectedLocationId = await chooseLocationToVisit(currentCaseStatusView);
 
   // Si hay una locacion pendiente, ejecutamos el comando y mostramos el nuevo estado.
   if (selectedLocationId) {
-    const updatedCaseStatusView = await visitLocation.execute({
+    currentCaseStatusView = await visitLocation.execute({
       caseId: demoCase.id.value,
       locationId: selectedLocationId
     });
 
     console.log("");
-    printCaseStatus("After Visiting Location", updatedCaseStatusView);
+    printCaseStatus("After Visiting Location", currentCaseStatusView);
+  }
+
+  // Elegimos una ciudad conectada para demostrar el subloop de navegacion.
+  const selectedDestinationCityId = await chooseDestinationCity(currentCaseStatusView);
+
+  // Si hay una conexion disponible, ejecutamos el viaje y mostramos el nuevo contexto.
+  if (selectedDestinationCityId) {
+    currentCaseStatusView = await travelToCity.execute({
+      caseId: demoCase.id.value,
+      destinationCityId: selectedDestinationCityId
+    });
+
+    console.log("");
+    printCaseStatus("After Traveling To City", currentCaseStatusView);
   }
 
   // Imprimimos evidencia de eventos y telemetria para hacer visible la orquestacion.

@@ -9,6 +9,7 @@ import {
   Case,
   CaseId,
   Cipher,
+  CityConnection,
   City,
   Location,
   TimeBudgetHours,
@@ -24,7 +25,7 @@ export function createBriefingCaseFixture(): Case {
     })
   ];
 
-  // Definimos una sola ciudad con una sola locacion para mantener el fixture pequeno y legible.
+  // Definimos la ciudad inicial con una locacion y una salida explicita hacia el siguiente nodo.
   const lima = new City({
     id: "lima",
     name: "Lima",
@@ -36,6 +37,60 @@ export function createBriefingCaseFixture(): Case {
           type: "route",
           summary: "Shipping crates point to a fast maritime transfer."
         }
+      })
+    ],
+    connections: [
+      new CityConnection({
+        destinationCityId: "santiago",
+        travelTimeHours: 6
+      })
+    ]
+  });
+
+  // Definimos una segunda ciudad conectada para poder probar el loop de navegacion.
+  const santiago = new City({
+    id: "santiago",
+    name: "Santiago",
+    locations: [
+      new Location({
+        id: "night-train-yard",
+        name: "Night Train Yard",
+        clue: {
+          type: "trait",
+          summary: "Workers remember a suspect carrying only a slim leather case."
+        }
+      })
+    ],
+    connections: [
+      new CityConnection({
+        destinationCityId: "lima",
+        travelTimeHours: 6
+      }),
+      new CityConnection({
+        destinationCityId: "bogota",
+        travelTimeHours: 5
+      })
+    ]
+  });
+
+  // Definimos una tercera ciudad para distinguir entre un viaje invalido y uno simplemente aun no disponible.
+  const bogota = new City({
+    id: "bogota",
+    name: "Bogota",
+    locations: [
+      new Location({
+        id: "embassy-garage",
+        name: "Embassy Garage",
+        clue: {
+          type: "route",
+          summary: "A diplomatic convoy was prepared for a midnight departure."
+        }
+      })
+    ],
+    connections: [
+      new CityConnection({
+        destinationCityId: "santiago",
+        travelTimeHours: 5
       })
     ]
   });
@@ -58,7 +113,7 @@ export function createBriefingCaseFixture(): Case {
       historicalOrigin: "Recovered from a ceremonial coastal dig."
     }),
     openingCity: lima,
-    cities: [lima],
+    cities: [lima, santiago, bogota],
     timeBudgetHours: TimeBudgetHours.fromNumber(48)
   });
 }
