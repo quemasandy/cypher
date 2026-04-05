@@ -81,6 +81,7 @@ classDiagram
 - Un `Case` solo tiene un `Cipher` objetivo.
 - No se puede visitar una locacion si el caso no esta en `Investigating` o `Chase`.
 - No se puede viajar si el tiempo restante es insuficiente para el costo de viaje.
+- No se puede viajar a una ciudad conectada si ese destino no fue revelado antes por evidencia de ruta en la ciudad actual o por historial de viaje ya conocido.
 - No se puede emitir una `Warrant` vacia.
 - En el MVP actual, una `Warrant` correcta debe cubrir el conjunto completo de `Trait` del objetivo.
 - Un rasgo no puede entrar a la `Warrant` si no fue descubierto antes mediante una `trait clue`.
@@ -89,10 +90,11 @@ classDiagram
 - El `Case` debe poder reconstruirse desde una `seed` y su historial de decisiones.
 
 ### Modelo de informacion de pistas
-- `Route clue`: reduce el espacio de ciudades posibles.
+- `Route clue`: reduce el espacio de ciudades posibles y revela un destino concreto que la vista publica puede ofrecer como opcion de viaje.
 - `Trait clue`: restringe rasgos de `Cipher`.
-- `Noise clue`: agrega incertidumbre controlada.
+- `Noise clue`: agrega incertidumbre controlada y tambien puede revelar un destino concreto para sostener hipotesis secundarias sin mostrar el grafo completo.
 - En el slice actual, una `trait clue` incluye el `Trait` que revela para que la vista publica pueda derivar evidencia sin filtrar el perfil completo del objetivo.
+- En el slice actual, una `route clue` o `noise clue` puede incluir el `CityId` que revela para que la vista publica derive opciones de viaje sin exponer todas las conexiones internas.
 - Toda pista debe incluir:
   - origen,
   - tipo,
@@ -112,6 +114,7 @@ classDiagram
 - `Case` concentra consistencia y evita estados repartidos entre servicios externos.
 - La granularidad de eventos debe ser suficiente para observabilidad, pero no tan alta que convierta cada setter en un evento.
 - El modelado de `Trait` y `Warrant` es critico porque determina la dificultad legal de la captura.
+- La vista publica del aggregate no puede ser una proyeccion ingenua de todo el estado interno; debe filtrar rasgos y destinos para preservar el loop de deduccion.
 
 ## Fuera de alcance
 - Modelado detallado de NPCs y dialogos.

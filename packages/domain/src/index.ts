@@ -7,17 +7,30 @@ export type {
   AvailableLocationSnapshot,
   AvailableTravelDestinationSnapshot,
   CaseDomainEvent,
+  CaseResolution,
+  CaseResolutionCause,
+  CaseResolutionOutcome,
+  CaseResolutionSnapshot,
   ClueCollectedDomainEvent,
   CaseOpenedDomainEvent,
   CaseProps,
-  CaseResolution,
   CaseStatusSnapshot,
   CaseWarrant,
   BriefingCaseProps,
   CityTraveledDomainEvent,
+  CipherEscapedDomainEvent,
+  EscapeResolutionCause,
+  IssuedWarrantSnapshot,
   LocationVisitedDomainEvent,
+  TraitSnapshot,
   TravelHistoryEntry,
-  TravelHistorySnapshot
+  TravelHistorySnapshot,
+  CaseResolvedDomainEvent,
+  WarrantIssuedDomainEvent
+} from "./case.js";
+export {
+  CaseResolutionCause as CaseResolutionCauseValues,
+  CaseResolutionOutcome as CaseResolutionOutcomeValues
 } from "./case.js";
 export { CaseState } from "./case-state.js";
 export { DomainRuleViolationError } from "./domain-rule-violation-error.js";
@@ -29,7 +42,8 @@ export {
   CityConnection,
   City,
   Location,
-  Trait
+  Trait,
+  Warrant
 } from "./supporting-types.js";
 export type {
   AgentProps,
@@ -39,6 +53,7 @@ export type {
   CityProps,
   LocationClue,
   LocationProps,
-  TraitProps
+  TraitProps,
+  WarrantProps
 } from "./supporting-types.js";
 export { TimeBudgetHours } from "./time-budget-hours.js";

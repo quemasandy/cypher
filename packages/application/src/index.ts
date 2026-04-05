@@ -7,11 +7,22 @@ export type {
   GetCaseStatusDependencies,
   GetCaseStatusInput
 } from "./get-case-status.js";
+export { AttemptArrest } from "./attempt-arrest.js";
+export type {
+  AttemptArrestDependencies,
+  AttemptArrestInput
+} from "./attempt-arrest.js";
 export { StartCase } from "./start-case.js";
 export type {
   StartCaseDependencies,
   StartCaseInput
 } from "./start-case.js";
+export { SubmitWarrant } from "./submit-warrant.js";
+export type {
+  SubmitWarrantDependencies,
+  SubmitWarrantInput,
+  SubmittedWarrantTraitInput
+} from "./submit-warrant.js";
 export { TravelToCity } from "./travel-to-city.js";
 export type {
   TravelToCityDependencies,

@@ -1,23 +1,25 @@
 /**
  * Este archivo implementa el caso de uso `StartCase`.
- * Vive en la capa de aplicacion porque coordina puertos, aggregate root y side effects,
- * pero no contiene decisiones de infraestructura ni de presentacion.
+ * Vive en la capa de aplicacion porque coordina generacion procedural, aggregate root
+ * y side effects, pero no contiene decisiones de infraestructura ni de presentacion.
  */
 import { DomainRuleViolationError, type Case, type CaseDomainEvent } from "@cipher/domain";
-import type { CaseRepository, EventBus, Telemetry } from "@cipher/contracts";
+import type { CaseGenerator, CaseRepository, EventBus, Telemetry } from "@cipher/contracts";
 import { toCaseStatusView, type CaseStatusView } from "./case-status-view.js";
 
 export interface StartCaseDependencies {
+  caseGenerator: CaseGenerator<Case>;
   caseRepository: CaseRepository<Case>;
   eventBus: EventBus<CaseDomainEvent>;
   telemetry: Telemetry;
 }
 
 export interface StartCaseInput {
-  caseId: string;
+  seed: string;
 }
 
 export class StartCase {
+  private readonly caseGenerator: CaseGenerator<Case>;
   private readonly caseRepository: CaseRepository<Case>;
   private readonly eventBus: EventBus<CaseDomainEvent>;
   private readonly telemetry: Telemetry;
@@ -25,7 +27,10 @@ export class StartCase {
   /**
    * El constructor recibe los puertos que la aplicacion necesita para trabajar.
    */
-  constructor({ caseRepository, eventBus, telemetry }: StartCaseDependencies) {
+  constructor({ caseGenerator, caseRepository, eventBus, telemetry }: StartCaseDependencies) {
+    // Guardamos el generador para construir un caso reproducible desde una `seed`.
+    this.caseGenerator = caseGenerator;
+
     // Guardamos el puerto de repositorio para cargar y persistir el caso.
     this.caseRepository = caseRepository;
 
@@ -39,14 +44,16 @@ export class StartCase {
   /**
    * Este metodo ejecuta el flujo completo de inicio del caso.
    */
-  async execute({ caseId }: StartCaseInput): Promise<CaseStatusView> {
-    // Cargamos el aggregate root desde el repositorio.
-    const caseRecord = await this.caseRepository.getById(caseId);
-
-    // Si no existe un caso con ese id, el use case falla con un mensaje claro.
-    if (!caseRecord) {
-      throw new DomainRuleViolationError(`Case ${caseId} was not found.`);
+  async execute({ seed }: StartCaseInput): Promise<CaseStatusView> {
+    // Validamos la entrada antes de invocar infraestructura para mantener errores de uso claros.
+    if (typeof seed !== "string" || seed.trim().length === 0) {
+      throw new DomainRuleViolationError("StartCase requires a non-empty seed.");
     }
+
+    const normalizedSeed = seed.trim();
+
+    // Pedimos al generador un aggregate nuevo y reproducible para esta `seed`.
+    const caseRecord = this.caseGenerator.generateFromSeed(normalizedSeed);
 
     // Delegamos al aggregate la validacion y la mutacion del estado.
     caseRecord.start();
@@ -62,7 +69,8 @@ export class StartCase {
 
     // Registramos un evento tecnico de alto nivel para observabilidad del caso de uso.
     await this.telemetry.track("case_started", {
-      caseId,
+      caseId: caseRecord.id.value,
+      seed: normalizedSeed,
       currentState: caseRecord.state
     });
 

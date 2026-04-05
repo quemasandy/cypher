@@ -4,7 +4,12 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CaseState, DomainRuleViolationError } from "@cipher/domain";
+import {
+  CaseState,
+  DomainRuleViolationError,
+  Trait,
+  Warrant
+} from "@cipher/domain";
 import { createBriefingCaseFixture } from "../helpers/create-briefing-case.js";
 
 test("Case.start moves the aggregate from Briefing to Investigating", () => {
@@ -104,6 +109,26 @@ test("Case.visitLocation rejects visits before the case has started", () => {
   );
 });
 
+test("Case.toStatusSnapshot exposes only discovered trait evidence, not the hidden target profile", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso y visitamos una locacion de rasgo en la ciudad inicial.
+  caseRecord.start();
+  caseRecord.visitLocation("rail-office");
+
+  const caseStatusSnapshot = caseRecord.toStatusSnapshot();
+
+  // Confirmamos que la vista publica solo muestre el rasgo realmente descubierto.
+  assert.deepEqual(caseStatusSnapshot.discoveredTraits, [
+    {
+      code: "travels-light",
+      label: "Travels light"
+    }
+  ]);
+  assert.deepEqual(caseStatusSnapshot.discoveredTraitLabels, ["Travels light"]);
+});
+
 test("Case.travelToCity changes the current city, spends time and records travel history", () => {
   // Creamos un fixture puro del dominio.
   const caseRecord = createBriefingCaseFixture();
@@ -111,7 +136,10 @@ test("Case.travelToCity changes the current city, spends time and records travel
   // Abrimos el caso para habilitar el loop principal de investigacion.
   caseRecord.start();
 
-  // Limpiamos los eventos de apertura para verificar solo los del viaje.
+  // Descubrimos primero la ruta de salida de la ciudad inicial.
+  caseRecord.visitLocation("harbor-warehouse");
+
+  // Limpiamos los eventos previos para verificar solo los del viaje.
   caseRecord.pullDomainEvents();
 
   // Ejecutamos un viaje valido hacia la ciudad conectada desde el nodo inicial.
@@ -123,8 +151,8 @@ test("Case.travelToCity changes the current city, spends time and records travel
   // Confirmamos que el agente haya cambiado de ciudad.
   assert.equal(caseRecord.currentCityId, "santiago");
 
-  // Confirmamos que el tiempo haya bajado segun el costo de la conexion elegida.
-  assert.equal(caseRecord.remainingTime.value, 42);
+  // Confirmamos que el tiempo refleje tanto la visita preparatoria como el viaje ejecutado.
+  assert.equal(caseRecord.remainingTime.value, 38);
 
   // Confirmamos que el historial de viajes guarde una entrada explicita del desplazamiento.
   assert.deepEqual(caseStatusSnapshot.travelHistory, [
@@ -137,10 +165,10 @@ test("Case.travelToCity changes the current city, spends time and records travel
     }
   ]);
 
-  // Confirmamos que la nueva ciudad exponga sus propias conexiones al adapter.
+  // Confirmamos que la nueva ciudad exponga solo destinos ya conocidos, no todo el grafo oculto.
   assert.deepEqual(
     caseStatusSnapshot.availableTravelDestinations.map((destination) => destination.id),
-    ["lima", "bogota"]
+    ["lima"]
   );
 
   // Confirmamos que el aggregate emita el evento de viaje esperado.
@@ -192,6 +220,314 @@ test("Case.travelToCity rejects destinations that are not connected to the curre
     (error: unknown) =>
       error instanceof DomainRuleViolationError &&
       error.message === "The selected destination cannot be reached from the current city."
+  );
+});
+
+test("Case.travelToCity rejects connected destinations that were not revealed by route evidence", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso pero aun no descubrimos ninguna pista de ruta.
+  caseRecord.start();
+
+  // Confirmamos que una conexion real siga oculta hasta que alguna pista la revele.
+  assert.throws(
+    () => caseRecord.travelToCity("santiago"),
+    (error: unknown) =>
+      error instanceof DomainRuleViolationError &&
+      error.message === "The selected destination is not supported by discovered route evidence."
+  );
+});
+
+test("Case.submitWarrant records the warrant and moves the case to WarrantIssued", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso para habilitar el loop principal de investigacion.
+  caseRecord.start();
+
+  // Descubrimos primero una ruta viable y el rasgo que luego respaldara la warrant emitida.
+  caseRecord.visitLocation("harbor-warehouse");
+  caseRecord.visitLocation("rail-office");
+
+  // Limpiamos los eventos de apertura para verificar solo los de la warrant.
+  caseRecord.pullDomainEvents();
+
+  // Construimos una warrant valida con el rasgo deducido del fixture.
+  const warrant = new Warrant({
+    suspectedTraits: [
+      new Trait({
+        code: "travels-light",
+        label: "Travels light"
+      })
+    ]
+  });
+
+  // Ejecutamos la emision de la warrant.
+  caseRecord.submitWarrant(warrant);
+
+  // Leemos el snapshot actualizado para verificar la vista del aggregate.
+  const caseStatusSnapshot = caseRecord.toStatusSnapshot();
+
+  // Confirmamos que la state machine haya avanzado a la fase correcta.
+  assert.equal(caseRecord.state, CaseState.WARRANT_ISSUED);
+
+  // Confirmamos que la warrant quede almacenada dentro del aggregate.
+  assert.ok(caseRecord.warrant);
+  assert.equal(caseRecord.warrant.suspectedTraits[0].code, "travels-light");
+
+  // Confirmamos que la vista de estado exponga la orden emitida.
+  assert.deepEqual(caseStatusSnapshot.issuedWarrant, {
+    suspectedTraits: [
+      {
+        code: "travels-light",
+        label: "Travels light"
+      }
+    ]
+  });
+
+  // Confirmamos que el aggregate emita el evento esperado.
+  assert.deepEqual(
+    caseRecord.pullDomainEvents().map((domainEvent) => domainEvent.type),
+    ["WarrantIssued"]
+  );
+});
+
+test("Case.submitWarrant rejects attempts to submit a warrant before the case starts", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Construimos una warrant valida para enfocar la prueba en la state machine.
+  const warrant = new Warrant({
+    suspectedTraits: [
+      new Trait({
+        code: "travels-light",
+        label: "Travels light"
+      })
+    ]
+  });
+
+  // Verificamos que emitir warrant en Briefing rompa la state machine.
+  assert.throws(
+    () => caseRecord.submitWarrant(warrant),
+    (error: unknown) =>
+      error instanceof DomainRuleViolationError &&
+      error.message === "A warrant can only be submitted while investigating the case."
+  );
+});
+
+test("Case.submitWarrant rejects traits that were not supported by discovered evidence", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso sin descubrir aun ningun rasgo.
+  caseRecord.start();
+
+  const warrant = new Warrant({
+    suspectedTraits: [
+      new Trait({
+        code: "travels-light",
+        label: "Travels light"
+      })
+    ]
+  });
+
+  // Confirmamos que el aggregate ya no permita emitir warrants con conocimiento oculto.
+  assert.throws(
+    () => caseRecord.submitWarrant(warrant),
+    (error: unknown) =>
+      error instanceof DomainRuleViolationError &&
+      error.message === "Warrant traits must be supported by discovered trait evidence."
+  );
+});
+
+test("Case.submitWarrant rejects attempts to issue a second warrant", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso para habilitar la emision.
+  caseRecord.start();
+
+  // Descubrimos una ruta viable y el rasgo requerido para que la primera warrant sea valida.
+  caseRecord.visitLocation("harbor-warehouse");
+  caseRecord.visitLocation("rail-office");
+
+  // Construimos una warrant valida.
+  const warrant = new Warrant({
+    suspectedTraits: [
+      new Trait({
+        code: "travels-light",
+        label: "Travels light"
+      })
+    ]
+  });
+
+  // Emitimos la primera warrant valida.
+  caseRecord.submitWarrant(warrant);
+
+  // Confirmamos que una segunda emision rompa la state machine.
+  assert.throws(
+    () => caseRecord.submitWarrant(warrant),
+    (error: unknown) =>
+      error instanceof DomainRuleViolationError &&
+      error.message === "A warrant can only be submitted while investigating the case."
+  );
+});
+
+test("Case.travelToCity enters Chase when a warranted investigation reaches the final city", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso y emitimos una warrant parcial para entrar a la siguiente fase.
+  caseRecord.start();
+  caseRecord.visitLocation("harbor-warehouse");
+  caseRecord.visitLocation("rail-office");
+  caseRecord.submitWarrant(
+    new Warrant({
+      suspectedTraits: [
+        new Trait({
+          code: "travels-light",
+          label: "Travels light"
+        })
+      ]
+    })
+  );
+
+  // Limpiamos los eventos previos para observar solo el viaje hacia la ciudad final.
+  caseRecord.pullDomainEvents();
+
+  // Viajamos a la ciudad final definida por el fixture.
+  caseRecord.travelToCity("santiago");
+
+  // Confirmamos que la state machine ahora entre en persecucion final.
+  assert.equal(caseRecord.state, CaseState.CHASE);
+});
+
+test("Case.attemptArrest resolves the case successfully in the final city with a matching warrant", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso y descubrimos los dos rasgos requeridos antes de emitir la warrant.
+  caseRecord.start();
+  caseRecord.visitLocation("harbor-warehouse");
+  caseRecord.visitLocation("rail-office");
+  caseRecord.travelToCity("santiago");
+  caseRecord.visitLocation("night-train-yard");
+  caseRecord.submitWarrant(
+    new Warrant({
+      suspectedTraits: [
+        new Trait({
+          code: "travels-light",
+          label: "Travels light"
+        }),
+        new Trait({
+          code: "prefers-night-trains",
+          label: "Prefers night trains"
+        })
+      ]
+    })
+  );
+
+  // La warrant emitida en la ciudad final activa `Chase`; limpiamos eventos previos para aislar el cierre.
+  caseRecord.pullDomainEvents();
+
+  // Ejecutamos el arresto final.
+  caseRecord.attemptArrest();
+
+  // Leemos el snapshot actualizado para verificar la vista del aggregate.
+  const caseStatusSnapshot = caseRecord.toStatusSnapshot();
+
+  // Confirmamos que el caso quede resuelto con captura exitosa.
+  assert.equal(caseRecord.state, CaseState.RESOLVED);
+  assert.equal(caseStatusSnapshot.resolution?.outcome, "Arrested");
+  assert.equal(caseStatusSnapshot.resolution?.cause, "ArrestSuccess");
+
+  // Confirmamos que el aggregate emita el evento de resolucion correcto.
+  assert.deepEqual(
+    caseRecord.pullDomainEvents().map((domainEvent) => domainEvent.type),
+    ["CaseResolved"]
+  );
+});
+
+test("Case.attemptArrest resolves the case as escape when the warrant does not match the target", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso y descubrimos el rasgo que luego usaremos en una warrant incompleta.
+  caseRecord.start();
+  caseRecord.visitLocation("harbor-warehouse");
+  caseRecord.visitLocation("rail-office");
+  caseRecord.travelToCity("santiago");
+  caseRecord.submitWarrant(
+    new Warrant({
+      suspectedTraits: [
+        new Trait({
+          code: "travels-light",
+          label: "Travels light"
+        })
+      ]
+    })
+  );
+
+  // La warrant emitida en la ciudad final activa `Chase`; limpiamos eventos previos para aislar el cierre.
+  caseRecord.pullDomainEvents();
+
+  // Ejecutamos el arresto final.
+  caseRecord.attemptArrest();
+
+  // Leemos el snapshot actualizado para verificar la vista del aggregate.
+  const caseStatusSnapshot = caseRecord.toStatusSnapshot();
+
+  // Confirmamos que el caso quede resuelto como escape por warrant incorrecta.
+  assert.equal(caseRecord.state, CaseState.RESOLVED);
+  assert.equal(caseStatusSnapshot.resolution?.outcome, "Escaped");
+  assert.equal(caseStatusSnapshot.resolution?.cause, "WrongWarrant");
+
+  // Confirmamos que el aggregate emita tanto la resolucion como el escape.
+  assert.deepEqual(
+    caseRecord.pullDomainEvents().map((domainEvent) => domainEvent.type),
+    ["CaseResolved", "CipherEscaped"]
+  );
+});
+
+test("Case resolves as escape when the remaining budget cannot pay any further action", () => {
+  // Creamos un fixture puro del dominio.
+  const caseRecord = createBriefingCaseFixture();
+
+  // Abrimos el caso y agotamos primero todas las locaciones investigables del fixture.
+  caseRecord.start();
+  caseRecord.visitLocation("harbor-warehouse");
+  caseRecord.travelToCity("santiago");
+  caseRecord.visitLocation("observatory-platform");
+  caseRecord.visitLocation("night-train-yard");
+  caseRecord.travelToCity("bogota");
+
+  // Visitamos tambien la pista de Bogota para que luego no quede ninguna accion barata disponible.
+  caseRecord.visitLocation("embassy-garage");
+
+  // Recorremos viajes repetibles hasta dejar el caso con tiempo insuficiente para cualquier accion.
+  caseRecord.travelToCity("santiago");
+  caseRecord.travelToCity("bogota");
+  caseRecord.travelToCity("santiago");
+
+  // Limpiamos eventos previos para verificar solo el ultimo viaje que vuelve el caso inviable.
+  caseRecord.pullDomainEvents();
+
+  // Este ultimo viaje deja 1 hora, sin locaciones pendientes y sin ninguna conexion pagable.
+  caseRecord.travelToCity("bogota");
+
+  const caseStatusSnapshot = caseRecord.toStatusSnapshot();
+
+  // Confirmamos que el aggregate cierre el caso automaticamente como escape por presupuesto agotado.
+  assert.equal(caseRecord.state, CaseState.RESOLVED);
+  assert.equal(caseStatusSnapshot.remainingTimeHours, 1);
+  assert.equal(caseStatusSnapshot.resolution?.outcome, "Escaped");
+  assert.equal(caseStatusSnapshot.resolution?.cause, "TimeExpired");
+
+  // Confirmamos que el dominio publique tanto el viaje como la resolucion terminal.
+  assert.deepEqual(
+    caseRecord.pullDomainEvents().map((domainEvent) => domainEvent.type),
+    ["CityTraveled", "CaseResolved", "CipherEscaped"]
   );
 });
 

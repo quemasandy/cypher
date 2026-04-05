@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@cipher/contracts": "file:../contracts",
-    "@cipher/domain": "file:../domain"
+    "@cipher/domain": "file:../domain",
+    "@types/sql.js": "^1.4.11",
+    "sql.js": "^1.14.1"
   }
 }

@@ -17,7 +17,7 @@ La primera base de codigo ya existe como un `vertical slice` pequeno y didactico
 - `packages/domain/` contiene el aggregate root `Case`, estados, value objects y entidades de soporte.
 - `packages/application/` contiene `StartCase`, `VisitLocation`, `TravelToCity`, `SubmitWarrant`, `AttemptArrest` y `GetCaseStatus`.
 - `packages/contracts/` define los puertos abstractos.
-- `packages/infra/` contiene adapters `in-memory` y el primer generador procedural determinista por `seed`.
+- `packages/infra/` contiene adapters `in-memory`, `SQLite`, un mapper de rehidratacion del aggregate y el generador procedural determinista por `seed`.
 - `apps/cli/` contiene la demo ejecutable en terminal con investigacion, viaje, warrant, resolucion final y arranque reproducible por `seed`.
 
 ### Comandos
@@ -40,7 +40,7 @@ El codigo fuente del vertical slice vive ahora en `TypeScript` y cada paquete co
 - El primer ejecutable planeado es `CLI-first`, `local-first`.
 - El recurso principal del juego son `horas virtuales`.
 - La arquitectura base es `Ports & Adapters` con `DDD` en el nucleo.
-- El baseline tecnico recomendado es `TypeScript/Node`, con evolucion posterior a `React`, `SQLite` y cloud.
+- El baseline tecnico recomendado es `TypeScript/Node`, con evolucion posterior a `React` y cloud.
 
 ## Implicaciones
 - El proyecto se puede implementar por capas sin redefinir reglas del negocio.

@@ -32,6 +32,42 @@ export abstract class CaseRepository<TCaseRecord> {
   }
 }
 
+export abstract class CaseGenerator<TCaseRecord> {
+  /**
+   * Este metodo debe construir un aggregate reproducible a partir de una `seed`.
+   */
+  generateFromSeed(_seed: string): TCaseRecord {
+    // Lanzamos un error explicito porque este puerto no debe instanciarse directamente.
+    throw new Error(createUnimplementedMessage("CaseGenerator.generateFromSeed"));
+  }
+}
+
+export abstract class RandomnessProvider {
+  /**
+   * Este metodo debe devolver un entero reproducible dentro de un rango semiabierto.
+   */
+  nextInteger(_minInclusive: number, _maxExclusive: number, _scopeKey: string): number {
+    // Lanzamos un error explicito porque este puerto no debe instanciarse directamente.
+    throw new Error(createUnimplementedMessage("RandomnessProvider.nextInteger"));
+  }
+
+  /**
+   * Este metodo debe elegir un valor estable de una lista segun la `seed` y el `scope`.
+   */
+  pickOne<T>(_values: ReadonlyArray<T>, _scopeKey: string): T {
+    // Lanzamos un error explicito porque este puerto no debe instanciarse directamente.
+    throw new Error(createUnimplementedMessage("RandomnessProvider.pickOne"));
+  }
+
+  /**
+   * Este metodo debe elegir varios valores unicos de una lista de forma reproducible.
+   */
+  pickMany<T>(_values: ReadonlyArray<T>, _count: number, _scopeKey: string): T[] {
+    // Lanzamos un error explicito porque este puerto no debe instanciarse directamente.
+    throw new Error(createUnimplementedMessage("RandomnessProvider.pickMany"));
+  }
+}
+
 export abstract class EventBus<TDomainEvent extends DomainEvent = DomainEvent> {
   /**
    * Este metodo debe publicar una coleccion de eventos de dominio.

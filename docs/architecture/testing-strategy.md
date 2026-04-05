@@ -10,7 +10,7 @@ Definir como se va a validar el sistema antes y durante la implementacion. La es
 - No dependen de frameworks ni IO.
 
 #### Application tests
-- Validan casos de uso end-to-end sobre doubles o adapters `in-memory`.
+- Validan casos de uso end-to-end sobre doubles o adapters concretos (`in-memory` y `SQLite` cuando el cambio de adapter es parte del riesgo a cubrir).
 - Cubren:
   - `StartCase`
   - `TravelToCity`
@@ -18,6 +18,10 @@ Definir como se va a validar el sistema antes y durante la implementacion. La es
   - `SubmitWarrant`
   - `AttemptArrest`
   - `GetCaseStatus`
+
+#### Infrastructure integration tests
+- Validan adapters concretos con IO real cuando el valor arquitectonico depende del adapter.
+- En el estado actual cubren roundtrip de `SQLiteCaseRepository` para demostrar persistencia y rehidratacion del aggregate.
 
 #### Generative / property-like tests
 - Verifican que toda `seed` valida produzca un caso resoluble.
@@ -39,6 +43,7 @@ Definir como se va a validar el sistema antes y durante la implementacion. La es
 
 ### Estrategia de doubles
 - `InMemoryCaseRepository` como adapter de prueba y de MVP.
+- `SQLiteCaseRepository` como adapter de integracion para validar reemplazo real de persistencia local.
 - `ProceduralCaseGenerator` como generador concreto del slice actual.
 - `DeterministicRandomnessProvider` para reproducir seeds.
 - `FakeClock` para controlar tiempo sin depender de reloj real.
@@ -61,6 +66,7 @@ Definir como se va a validar el sistema antes y durante la implementacion. La es
 - El diseno de puertos debe facilitar pruebas deterministicas.
 - Si algo no puede probarse sin bootstrapping complejo, probablemente esta mal ubicado arquitectonicamente.
 - La estrategia de generacion procedural exige validacion automatica desde el inicio.
+- La migracion de repositorios no se considera cerrada hasta que exista al menos una prueba con IO real que reabra el caso desde otra instancia del adapter.
 
 ## Fuera de alcance
 - Tests E2E de browser en la fase documental.

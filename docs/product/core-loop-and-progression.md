@@ -8,8 +8,8 @@ Aislar el loop central, subloops y la progresion del juego para que las decision
 1. Recibir `Briefing`.
 2. Evaluar la ciudad actual y las acciones disponibles.
 3. `VisitLocation` para obtener nuevas `Clues`.
-4. Interpretar pistas de ruta y rasgos.
-5. `TravelToCity` consumiendo tiempo.
+4. Interpretar pistas de ruta y rasgos para revelar destinos y perfilar a `Cipher`.
+5. `TravelToCity` consumiendo tiempo solo hacia destinos respaldados por evidencia de ruta o por historial de viaje ya conocido.
 6. Repetir hasta identificar ciudad final y rasgos de `Cipher`.
 7. `SubmitWarrant`.
 8. `AttemptArrest`.
@@ -41,10 +41,14 @@ sequenceDiagram
 - Seleccionar la locacion con mejor relacion costo/informacion.
 - Obtener pistas.
 - Actualizar hipotesis sobre ciudad siguiente y rasgos del objetivo.
+- Revelar opciones de viaje reales sin exponer el grafo completo al jugador.
 
 #### Loop de navegacion
+- El jugador no ve todas las conexiones ocultas de la ciudad actual.
 - Comparar costo temporal del viaje con el valor esperado de la ciudad destino.
 - Decidir si seguir una pista principal o validar una hipotesis secundaria.
+- Una pista de `route` o `noise` puede revelar un destino concreto.
+- El historial de viaje mantiene visibles las rutas ya recorridas para permitir retroceder sin filtrar informacion nueva.
 
 #### Loop de deduccion
 - Consolidar `Trait clues`.
@@ -77,11 +81,13 @@ sequenceDiagram
 - Nunca se debe exigir una deduccion imposible.
 - El ruido debe generar incertidumbre razonable, no adivinacion.
 - Siempre debe existir una secuencia resoluble si el jugador interpreta correctamente la informacion.
+- La interfaz no debe regalar conectividad oculta; las decisiones de viaje deben salir de evidencia visible.
 
 ## Implicaciones
 - El loop principal exige un modelo de estado claro y comandos discretos.
 - La progresion debe documentarse junto al generador procedural, porque dificultad y generacion no son sistemas independientes.
 - La UX del CLI debe ayudar a sintetizar informacion para que el desafio sea de decision, no de parsing visual.
+- La vista publica debe separar con cuidado verdad interna del caso y conocimiento descubierto por el jugador.
 
 ## Fuera de alcance
 - Arboles de progresion RPG.

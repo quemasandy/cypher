@@ -54,6 +54,7 @@ docs/
 - Repositorios concretos.
 - `CaseGenerator`, `RandomnessProvider`, `Clock`, `EventBus`, `Telemetry` concretos.
 - Adaptadores a `SQLite`, file storage, backend HTTP o cloud futura.
+- Mappers de persistencia que traduzcan aggregates a snapshots planos cuando un adapter lo necesite.
 
 #### Interface
 - `CLI` para el MVP.
@@ -74,13 +75,15 @@ docs/
 
 ### Evolucion tecnica planeada
 1. `CLI + InMemoryCaseRepository`
-2. `CLI/Web + SQLiteCaseRepository`
-3. `Web/API + cloud adapters`
+2. `CLI + SQLiteCaseRepository`
+3. `CLI/Web + SQLiteCaseRepository`
+4. `Web/API + cloud adapters`
 
 ## Implicaciones
 - La arquitectura exige mas disciplina inicial, pero reduce costo de cambio futuro.
 - El reemplazo de adapters debe validarse con tests de aplicacion y contratos.
 - La estructura de carpetas tiene que reflejar los limites conceptuales, no solo preferencias cosmeticas.
+- Cuando un adapter necesita serializar aggregates complejos, la traduccion debe vivir fuera de `domain` para conservar el nucleo libre de detalles de storage.
 
 ## Fuera de alcance
 - Microservicios.

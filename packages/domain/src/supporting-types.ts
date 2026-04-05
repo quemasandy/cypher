@@ -51,6 +51,42 @@ export class Trait {
   }
 }
 
+export interface WarrantProps {
+  suspectedTraits: ReadonlyArray<Trait>;
+}
+
+/**
+ * `Warrant` representa la hipotesis legal que el jugador decide comprometer.
+ * Se modela como value object porque su identidad no importa por separado:
+ * lo importante es el conjunto de rasgos que declara.
+ */
+export class Warrant {
+  readonly suspectedTraits: Trait[];
+
+  constructor({ suspectedTraits }: WarrantProps) {
+    // Una warrant vacia no expresa ninguna hipotesis util y viola el modelo del juego.
+    if (!Array.isArray(suspectedTraits) || suspectedTraits.length === 0) {
+      throw new DomainRuleViolationError("Warrant must include at least one suspected trait.");
+    }
+
+    // Todas las entradas deben ser value objects `Trait` ya validados.
+    if (!suspectedTraits.every((trait) => trait instanceof Trait)) {
+      throw new DomainRuleViolationError("Warrant suspected traits must be Trait instances.");
+    }
+
+    // Exigimos codigos unicos para que la orden no duplique evidencia semantica.
+    const traitCodes = suspectedTraits.map((trait) => trait.code);
+    const uniqueTraitCodes = new Set(traitCodes);
+
+    if (uniqueTraitCodes.size !== traitCodes.length) {
+      throw new DomainRuleViolationError("Warrant cannot contain duplicated trait codes.");
+    }
+
+    // Copiamos los rasgos para evitar mutaciones externas accidentales.
+    this.suspectedTraits = [...suspectedTraits];
+  }
+}
+
 export interface AgentProps {
   id: string;
   name: string;
@@ -127,6 +163,8 @@ export class Cipher {
 export interface LocationClue {
   type: string;
   summary: string;
+  revealedTrait?: Trait;
+  revealedDestinationCityId?: string;
 }
 
 export interface LocationProps {
@@ -169,12 +207,63 @@ export class Location {
       throw new DomainRuleViolationError("Location clue summary must be a non-empty string.");
     }
 
+    const normalizedClueType = clue.type.trim();
+
+    // Las pistas de rasgo deben apuntar explicitamente al rasgo que permiten deducir.
+    if (normalizedClueType === "trait" && !(clue.revealedTrait instanceof Trait)) {
+      throw new DomainRuleViolationError(
+        "Trait clues must declare the revealed trait as a Trait instance."
+      );
+    }
+
+    // Las pistas de otros tipos no deben cargar metadata de rasgo para evitar ambiguedad semantica.
+    if (normalizedClueType !== "trait" && clue.revealedTrait !== undefined) {
+      throw new DomainRuleViolationError(
+        "Only trait clues can declare a revealed trait."
+      );
+    }
+
+    // Las pistas de ruta deben apuntar explicitamente a una ciudad revelada.
+    if (
+      normalizedClueType === "route" &&
+      (typeof clue.revealedDestinationCityId !== "string" ||
+        clue.revealedDestinationCityId.trim().length === 0)
+    ) {
+      throw new DomainRuleViolationError(
+        "Route clues must declare the revealed destination city id."
+      );
+    }
+
+    // El ruido actual puede revelar una ciudad alternativa, pero otras pistas no deben cargar ese dato.
+    if (
+      !["route", "noise"].includes(normalizedClueType) &&
+      clue.revealedDestinationCityId !== undefined
+    ) {
+      throw new DomainRuleViolationError(
+        "Only route or noise clues can declare a revealed destination city id."
+      );
+    }
+
+    if (
+      clue.revealedDestinationCityId !== undefined &&
+      (typeof clue.revealedDestinationCityId !== "string" ||
+        clue.revealedDestinationCityId.trim().length === 0)
+    ) {
+      throw new DomainRuleViolationError(
+        "Revealed destination city ids must be non-empty strings."
+      );
+    }
+
     // Guardamos el estado validado de la locacion.
     this.id = id.trim();
     this.name = name.trim();
     this.clue = {
-      type: clue.type.trim(),
-      summary: clue.summary.trim()
+      type: normalizedClueType,
+      summary: clue.summary.trim(),
+      ...(clue.revealedTrait === undefined ? {} : { revealedTrait: clue.revealedTrait }),
+      ...(clue.revealedDestinationCityId === undefined
+        ? {}
+        : { revealedDestinationCityId: clue.revealedDestinationCityId.trim() })
     };
   }
 }

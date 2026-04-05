@@ -20,7 +20,10 @@ test("TravelToCity persists the trip, publishes domain events and records teleme
   // El caso de uso requiere que el caso ya este abierto para investigar.
   caseRecord.start();
 
-  // Limpiamos el evento de apertura para verificar solo el efecto del viaje.
+  // Descubrimos primero la ruta de salida que habilita el viaje en la vista publica.
+  caseRecord.visitLocation("harbor-warehouse");
+
+  // Limpiamos los efectos previos para verificar solo el viaje.
   caseRecord.pullDomainEvents();
 
   // Construimos los adapters `in-memory` del escenario.
@@ -47,7 +50,7 @@ test("TravelToCity persists the trip, publishes domain events and records teleme
   // Confirmamos que el aggregate fue guardado con la nueva ciudad actual.
   assert.ok(persistedCase);
   assert.equal(persistedCase.currentCityId, "santiago");
-  assert.equal(persistedCase.remainingTime.value, 42);
+  assert.equal(persistedCase.remainingTime.value, 38);
 
   // Confirmamos que la vista de aplicacion ya revele el nuevo contexto geografico.
   assert.equal(caseStatusView.currentCityName, "Santiago");

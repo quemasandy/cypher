@@ -22,6 +22,10 @@ export function createBriefingCaseFixture(): Case {
     new Trait({
       code: "travels-light",
       label: "Travels light"
+    }),
+    new Trait({
+      code: "prefers-night-trains",
+      label: "Prefers night trains"
     })
   ];
 
@@ -35,7 +39,17 @@ export function createBriefingCaseFixture(): Case {
         name: "Harbor Warehouse",
         clue: {
           type: "route",
-          summary: "Shipping crates point to a fast maritime transfer."
+          summary: "Shipping crates point to a fast maritime transfer.",
+          revealedDestinationCityId: "santiago"
+        }
+      }),
+      new Location({
+        id: "rail-office",
+        name: "Rail Office",
+        clue: {
+          type: "trait",
+          summary: "Ticket clerks remember a suspect traveling with almost no luggage.",
+          revealedTrait: targetTraits[0]
         }
       })
     ],
@@ -53,11 +67,21 @@ export function createBriefingCaseFixture(): Case {
     name: "Santiago",
     locations: [
       new Location({
+        id: "observatory-platform",
+        name: "Observatory Platform",
+        clue: {
+          type: "route",
+          summary: "Station staff prepared a priority corridor toward Bogota.",
+          revealedDestinationCityId: "bogota"
+        }
+      }),
+      new Location({
         id: "night-train-yard",
         name: "Night Train Yard",
         clue: {
           type: "trait",
-          summary: "Workers remember a suspect carrying only a slim leather case."
+          summary: "Workers remember a suspect choosing only late-night departures.",
+          revealedTrait: targetTraits[1]
         }
       })
     ],
@@ -83,7 +107,8 @@ export function createBriefingCaseFixture(): Case {
         name: "Embassy Garage",
         clue: {
           type: "route",
-          summary: "A diplomatic convoy was prepared for a midnight departure."
+          summary: "A diplomatic convoy was prepared for a midnight departure.",
+          revealedDestinationCityId: "santiago"
         }
       })
     ],
@@ -113,6 +138,7 @@ export function createBriefingCaseFixture(): Case {
       historicalOrigin: "Recovered from a ceremonial coastal dig."
     }),
     openingCity: lima,
+    finalCity: santiago,
     cities: [lima, santiago, bogota],
     timeBudgetHours: TimeBudgetHours.fromNumber(48)
   });

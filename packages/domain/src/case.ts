@@ -5,11 +5,42 @@
  */
 import { CaseState } from "./case-state.js";
 import { DomainRuleViolationError } from "./domain-rule-violation-error.js";
-import { Agent, Artifact, CaseId, Cipher, City } from "./supporting-types.js";
+import {
+  Agent,
+  Artifact,
+  CaseId,
+  Cipher,
+  City,
+  Trait,
+  Warrant
+} from "./supporting-types.js";
 import { TimeBudgetHours } from "./time-budget-hours.js";
 
 // En el MVP la visita consume un costo fijo para mantener el modelo simple y didactico.
 const LOCATION_VISIT_TIME_COST_HOURS = 4;
+
+export const CaseResolutionOutcome = Object.freeze({
+  ARRESTED: "Arrested",
+  ESCAPED: "Escaped"
+} as const);
+
+export type CaseResolutionOutcome =
+  (typeof CaseResolutionOutcome)[keyof typeof CaseResolutionOutcome];
+
+export const CaseResolutionCause = Object.freeze({
+  ARREST_SUCCESS: "ArrestSuccess",
+  TIME_EXPIRED: "TimeExpired",
+  WRONG_WARRANT: "WrongWarrant",
+  WRONG_CITY: "WrongCity"
+} as const);
+
+export type CaseResolutionCause =
+  (typeof CaseResolutionCause)[keyof typeof CaseResolutionCause];
+
+export type EscapeResolutionCause =
+  | (typeof CaseResolutionCause.TIME_EXPIRED)
+  | (typeof CaseResolutionCause.WRONG_WARRANT)
+  | (typeof CaseResolutionCause.WRONG_CITY);
 
 export interface CaseOpenedDomainEvent {
   type: "CaseOpened";
@@ -44,11 +75,42 @@ export interface ClueCollectedDomainEvent {
   clueSummary: string;
 }
 
+export interface WarrantIssuedDomainEvent {
+  type: "WarrantIssued";
+  caseId: string;
+  suspectedTraitCodes: string[];
+  suspectedTraitLabels: string[];
+}
+
+export interface CaseResolvedDomainEvent {
+  type: "CaseResolved";
+  caseId: string;
+  outcome: CaseResolutionOutcome;
+  cause: CaseResolutionCause;
+  currentCityId: string;
+  remainingTimeHours: number;
+}
+
+export interface CipherEscapedDomainEvent {
+  type: "CipherEscaped";
+  caseId: string;
+  cause: EscapeResolutionCause;
+  currentCityId: string;
+}
+
 export type CaseDomainEvent =
   | CaseOpenedDomainEvent
   | CityTraveledDomainEvent
   | LocationVisitedDomainEvent
-  | ClueCollectedDomainEvent;
+  | ClueCollectedDomainEvent
+  | WarrantIssuedDomainEvent
+  | CaseResolvedDomainEvent
+  | CipherEscapedDomainEvent;
+
+export interface TraitSnapshot {
+  code: string;
+  label: string;
+}
 
 export interface AvailableLocationSnapshot {
   id: string;
@@ -74,18 +136,31 @@ export interface TravelHistorySnapshot extends TravelHistoryEntry {
   toCityName: string;
 }
 
+export interface IssuedWarrantSnapshot {
+  suspectedTraits: TraitSnapshot[];
+}
+
+export interface CaseResolutionSnapshot {
+  outcome: CaseResolutionOutcome;
+  cause: CaseResolutionCause;
+  summary: string;
+}
+
 export interface CaseStatusSnapshot {
   caseId: string;
   state: CaseState;
   agentName: string;
   agencyName: string;
   targetAlias: string;
-  targetTraitLabels: string[];
+  discoveredTraits: TraitSnapshot[];
+  discoveredTraitLabels: string[];
   artifactName: string;
   artifactOrigin: string;
   currentCityId: string;
   currentCityName: string;
   remainingTimeHours: number;
+  issuedWarrant: IssuedWarrantSnapshot | null;
+  resolution: CaseResolutionSnapshot | null;
   availableLocations: AvailableLocationSnapshot[];
   availableTravelDestinations: AvailableTravelDestinationSnapshot[];
   visitedLocationNames: string[];
@@ -93,8 +168,8 @@ export interface CaseStatusSnapshot {
   travelHistory: TravelHistorySnapshot[];
 }
 
-export type CaseWarrant = Record<string, unknown> | null;
-export type CaseResolution = Record<string, unknown> | null;
+export type CaseWarrant = Warrant | null;
+export type CaseResolution = CaseResolutionSnapshot | null;
 
 export interface CaseProps {
   id: CaseId;
@@ -104,6 +179,7 @@ export interface CaseProps {
   artifact: Artifact;
   cities: ReadonlyArray<City>;
   currentCityId: string;
+  finalCityId: string;
   remainingTime: TimeBudgetHours;
   travelHistory?: ReadonlyArray<TravelHistoryEntry>;
   visitedLocationIds?: ReadonlyArray<string>;
@@ -118,6 +194,7 @@ export interface BriefingCaseProps {
   target: Cipher;
   artifact: Artifact;
   openingCity: City;
+  finalCity: City;
   cities: ReadonlyArray<City>;
   timeBudgetHours: TimeBudgetHours;
 }
@@ -130,6 +207,7 @@ export class Case {
   artifact: Artifact;
   cities: City[];
   currentCityId: string;
+  finalCityId: string;
   remainingTime: TimeBudgetHours;
   travelHistory: TravelHistoryEntry[];
   visitedLocationIds: string[];
@@ -151,6 +229,7 @@ export class Case {
     artifact,
     cities,
     currentCityId,
+    finalCityId,
     remainingTime,
     travelHistory = [],
     visitedLocationIds = [],
@@ -211,6 +290,11 @@ export class Case {
       throw new DomainRuleViolationError("Case current city must exist within the case city list.");
     }
 
+    // El caso necesita una ciudad final valida para cerrar la persecucion.
+    if (!knownCityIds.has(finalCityId)) {
+      throw new DomainRuleViolationError("Case final city must exist within the case city list.");
+    }
+
     // Validamos que las conexiones de viaje apunten a ciudades reales y no se dupliquen.
     for (const city of cities) {
       const destinationIdsSeen = new Set<string>();
@@ -233,6 +317,27 @@ export class Case {
         }
 
         destinationIdsSeen.add(connection.destinationCityId);
+      }
+
+      // Tambien validamos que las pistas que revelan destinos apunten a ciudades reales del caso.
+      for (const location of city.locations) {
+        const revealedDestinationCityId = location.clue.revealedDestinationCityId;
+
+        if (revealedDestinationCityId === undefined) {
+          continue;
+        }
+
+        if (!knownCityIds.has(revealedDestinationCityId)) {
+          throw new DomainRuleViolationError(
+            "Clues can only reveal destination cities that exist inside the case."
+          );
+        }
+
+        if (revealedDestinationCityId === city.id) {
+          throw new DomainRuleViolationError(
+            "A clue cannot reveal the same city that already contains the location."
+          );
+        }
       }
     }
 
@@ -270,6 +375,61 @@ export class Case {
       }
     }
 
+    // Si existe una warrant reconstruida, debe respetar el value object del dominio.
+    if (warrant !== null && !(warrant instanceof Warrant)) {
+      throw new DomainRuleViolationError("Case warrant must be a Warrant instance or null.");
+    }
+
+    // Si existe una resolucion reconstruida, validamos su forma explicita.
+    if (resolution !== null) {
+      if (typeof resolution !== "object") {
+        throw new DomainRuleViolationError("Case resolution must be an object or null.");
+      }
+
+      if (!Object.values(CaseResolutionOutcome).includes(resolution.outcome)) {
+        throw new DomainRuleViolationError("Case resolution outcome must be canonical.");
+      }
+
+      if (!Object.values(CaseResolutionCause).includes(resolution.cause)) {
+        throw new DomainRuleViolationError("Case resolution cause must be canonical.");
+      }
+
+      if (typeof resolution.summary !== "string" || resolution.summary.trim().length === 0) {
+        throw new DomainRuleViolationError("Case resolution summary must be a non-empty string.");
+      }
+    }
+
+    // Los estados que dependen de una warrant deben reconstruirse con esa evidencia ya presente.
+    if (
+      (state === CaseState.WARRANT_ISSUED || state === CaseState.CHASE) &&
+      warrant === null
+    ) {
+      throw new DomainRuleViolationError(
+        "A case in WarrantIssued or Chase state must contain a warrant."
+      );
+    }
+
+    // Antes de emitir warrant, el aggregate aun no debe guardar una orden comprometida.
+    if (
+      warrant !== null &&
+      (state === CaseState.BRIEFING || state === CaseState.INVESTIGATING)
+    ) {
+      throw new DomainRuleViolationError(
+        "A warrant cannot exist before the case reaches a post-submission state."
+      );
+    }
+
+    // Una resolucion solo es coherente en el estado terminal del caso.
+    if (state === CaseState.RESOLVED && resolution === null) {
+      throw new DomainRuleViolationError("A resolved case must contain a resolution snapshot.");
+    }
+
+    if (state !== CaseState.RESOLVED && resolution !== null) {
+      throw new DomainRuleViolationError(
+        "A non-resolved case cannot already contain a resolution snapshot."
+      );
+    }
+
     // Persistimos la identidad del caso.
     this.id = id;
 
@@ -291,6 +451,9 @@ export class Case {
     // Guardamos la ciudad actual del agente.
     this.currentCityId = currentCityId;
 
+    // Guardamos la ciudad final correcta del caso.
+    this.finalCityId = finalCityId;
+
     // Guardamos el presupuesto restante de tiempo.
     this.remainingTime = remainingTime;
 
@@ -307,7 +470,7 @@ export class Case {
     this.warrant = warrant;
 
     // Guardamos la resolucion si el caso ya termino.
-    this.resolution = resolution;
+    this.resolution = resolution === null ? null : { ...resolution };
 
     // Inicializamos el buffer de eventos de dominio emitidos durante esta unidad de trabajo.
     this.domainEvents = [];
@@ -323,6 +486,7 @@ export class Case {
     target,
     artifact,
     openingCity,
+    finalCity,
     cities,
     timeBudgetHours
   }: BriefingCaseProps): Case {
@@ -335,6 +499,7 @@ export class Case {
       artifact,
       cities,
       currentCityId: openingCity.id,
+      finalCityId: finalCity.id,
       remainingTime: timeBudgetHours,
       travelHistory: [],
       visitedLocationIds: [],
@@ -397,6 +562,13 @@ export class Case {
       );
     }
 
+    // Aunque exista la conexion fisica, el jugador solo puede seguir rutas ya descubiertas o conocidas.
+    if (!this.getKnownTravelDestinationIdsForCurrentCity().has(destinationCityId)) {
+      throw new DomainRuleViolationError(
+        "The selected destination is not supported by discovered route evidence."
+      );
+    }
+
     // Resolvemos la ciudad destino para validar identidad y preparar la mutacion.
     const destinationCity = this.getCityById(destinationCityId);
 
@@ -422,6 +594,20 @@ export class Case {
       travelTimeHours: travelConnection.travelTimeHours,
       remainingTimeHours: this.remainingTime.value
     });
+
+    // Si el tiempo se agotó exactamente con este movimiento, el caso termina por escape.
+    if (this.remainingTime.value === 0) {
+      this.resolveAsEscape(CaseResolutionCause.TIME_EXPIRED);
+      return;
+    }
+
+    // Cuando la warrant ya fue emitida y se alcanza la ciudad final, la investigacion entra en persecucion.
+    if (this.state === CaseState.WARRANT_ISSUED && destinationCity.id === this.finalCityId) {
+      this.state = CaseState.CHASE;
+    }
+
+    // Si aun queda tiempo pero ya no alcanza para ninguna accion valida, el caso tambien termina.
+    this.resolveAsEscapeIfNoFurtherActionCanBePaid();
   }
 
   /**
@@ -482,6 +668,122 @@ export class Case {
       clueType: locationToVisit.clue.type,
       clueSummary: locationToVisit.clue.summary
     });
+
+    // Si el tiempo se agotó exactamente con esta accion, el caso termina por escape.
+    if (this.remainingTime.value === 0) {
+      this.resolveAsEscape(CaseResolutionCause.TIME_EXPIRED);
+      return;
+    }
+
+    // Tambien cerramos el caso si la visita deja un presupuesto inutilizable para seguir jugando.
+    this.resolveAsEscapeIfNoFurtherActionCanBePaid();
+  }
+
+  /**
+   * Este metodo registra la hipotesis legal del jugador como una warrant comprometida.
+   * En este slice la lista completa de rasgos de `Cipher` funciona como conjunto requerido
+   * para la captura final, por eso canonizamos la orden contra los traits del objetivo.
+   */
+  submitWarrant(warrant: Warrant): void {
+    // La orden solo puede emitirse mientras el jugador sigue investigando.
+    this.ensureStateIs(
+      CaseState.INVESTIGATING,
+      "A warrant can only be submitted while investigating the case."
+    );
+
+    // La API del dominio exige un value object de warrant ya validado.
+    if (!(warrant instanceof Warrant)) {
+      throw new DomainRuleViolationError("Submitted warrant must be a Warrant instance.");
+    }
+
+    // Reforzamos la regla de no reemision aunque la state machine ya la sugiera.
+    if (this.warrant !== null) {
+      throw new DomainRuleViolationError("A warrant has already been issued for this case.");
+    }
+
+    // Construimos un indice de rasgos canonicos del objetivo para validar la orden.
+    const targetTraitsByCode = new Map(
+      this.target.traits.map((trait) => [trait.code, trait] as const)
+    );
+
+    // Rehidratamos la warrant usando solo rasgos conocidos del caso.
+    const canonicalSuspectedTraits = warrant.suspectedTraits.map((suspectedTrait) => {
+      const canonicalTargetTrait = targetTraitsByCode.get(suspectedTrait.code);
+
+      if (!canonicalTargetTrait) {
+        throw new DomainRuleViolationError(
+          "Warrant traits must belong to the target profile defined for this case."
+        );
+      }
+
+      return canonicalTargetTrait;
+    });
+
+    const canonicalWarrant = new Warrant({
+      suspectedTraits: canonicalSuspectedTraits
+    });
+
+    // La deduccion del jugador debe apoyarse en rasgos realmente descubiertos durante la investigacion.
+    const discoveredTraitCodes = new Set(
+      this.getDiscoveredTraits().map((discoveredTrait) => discoveredTrait.code)
+    );
+
+    for (const suspectedTrait of canonicalWarrant.suspectedTraits) {
+      if (!discoveredTraitCodes.has(suspectedTrait.code)) {
+        throw new DomainRuleViolationError(
+          "Warrant traits must be supported by discovered trait evidence."
+        );
+      }
+    }
+
+    // Persistimos la orden seleccionada como parte del estado consistente del aggregate.
+    this.warrant = canonicalWarrant;
+
+    // El caso pasa al estado donde la hipotesis ya fue comprometida.
+    this.state = CaseState.WARRANT_ISSUED;
+
+    // Si el jugador ya esta en la ciudad final correcta, la persecucion puede comenzar de inmediato.
+    if (this.currentCityId === this.finalCityId) {
+      this.state = CaseState.CHASE;
+    }
+
+    // Emitimos un evento explicito para telemetria, proyecciones y futuros adapters.
+    this.recordDomainEvent({
+      type: "WarrantIssued",
+      caseId: this.id.value,
+      suspectedTraitCodes: canonicalWarrant.suspectedTraits.map((trait) => trait.code),
+      suspectedTraitLabels: canonicalWarrant.suspectedTraits.map((trait) => trait.label)
+    });
+
+    // Si la warrant deja al jugador sin presupuesto para viajar y aun no hay persecucion activa, el caso muere.
+    this.resolveAsEscapeIfNoFurtherActionCanBePaid();
+  }
+
+  /**
+   * Este metodo intenta cerrar el caso con una captura final.
+   * Solo puede ejecutarse en `Chase`, cuando el jugador ya viajo bajo warrant hacia la ciudad final.
+   */
+  attemptArrest(): void {
+    // Solo tiene sentido intentar el arresto durante la persecucion final.
+    this.ensureStateIs(
+      CaseState.CHASE,
+      "An arrest can only be attempted during the final chase."
+    );
+
+    // Si el jugador intenta cerrar en una ciudad equivocada, `Cipher` escapa.
+    if (this.currentCityId !== this.finalCityId) {
+      this.resolveAsEscape(CaseResolutionCause.WRONG_CITY);
+      return;
+    }
+
+    // Si la warrant no coincide con el perfil requerido, el arresto falla legalmente.
+    if (!this.doesIssuedWarrantMatchTarget()) {
+      this.resolveAsEscape(CaseResolutionCause.WRONG_WARRANT);
+      return;
+    }
+
+    // Si ciudad y warrant son correctas, el caso termina con captura exitosa.
+    this.resolveAsArrestSuccess();
   }
 
   /**
@@ -500,7 +802,6 @@ export class Case {
 
     // Transformamos las locaciones de la ciudad actual en una vista que oculte pistas no descubiertas.
     const availableLocations = currentCity.locations.map((location) => {
-      // Resolver aqui el flag evita que cada adapter de interfaz replique la misma regla.
       const isVisited = this.visitedLocationIds.includes(location.id);
 
       return {
@@ -511,16 +812,19 @@ export class Case {
       };
     });
 
-    // Convertimos las conexiones de viaje del nodo actual en opciones legibles para adapters.
-    const availableTravelDestinations = currentCity.connections.map((connection) => {
-      const destinationCity = this.getCityById(connection.destinationCityId);
+    // Convertimos solo los destinos ya conocidos del nodo actual en opciones legibles para adapters.
+    const knownTravelDestinationIds = this.getKnownTravelDestinationIdsForCurrentCity();
+    const availableTravelDestinations = currentCity.connections
+      .filter((connection) => knownTravelDestinationIds.has(connection.destinationCityId))
+      .map((connection) => {
+        const destinationCity = this.getCityById(connection.destinationCityId);
 
-      return {
-        id: destinationCity.id,
-        name: destinationCity.name,
-        travelTimeHours: connection.travelTimeHours
-      };
-    });
+        return {
+          id: destinationCity.id,
+          name: destinationCity.name,
+          travelTimeHours: connection.travelTimeHours
+        };
+      });
 
     // Expandimos el historial de viajes con nombres legibles para no delegar mapeos a la UI.
     const travelHistory = this.travelHistory.map((travelEntry) => {
@@ -534,6 +838,26 @@ export class Case {
       };
     });
 
+    // Expandimos los rasgos deducidos a una estructura plana consumible por adapters.
+    const discoveredTraits = this.getDiscoveredTraits().map((trait) => ({
+      code: trait.code,
+      label: trait.label
+    }));
+
+    // Si ya existe una orden, la convertimos en una vista plana para adapters.
+    const issuedWarrant =
+      this.warrant === null
+        ? null
+        : {
+            suspectedTraits: this.warrant.suspectedTraits.map((trait) => ({
+              code: trait.code,
+              label: trait.label
+            }))
+          };
+
+    // Copiamos la resolucion si el caso ya termino para que la UI pueda explicarla.
+    const resolution = this.resolution === null ? null : { ...this.resolution };
+
     // Devolvemos un objeto plano para evitar que la capa de aplicacion exponga entidades completas.
     return {
       caseId: this.id.value,
@@ -541,12 +865,15 @@ export class Case {
       agentName: this.activeAgent.name,
       agencyName: this.activeAgent.agency,
       targetAlias: this.target.alias,
-      targetTraitLabels: this.target.traits.map((trait) => trait.label),
+      discoveredTraits,
+      discoveredTraitLabels: discoveredTraits.map((trait) => trait.label),
       artifactName: this.artifact.name,
       artifactOrigin: this.artifact.historicalOrigin,
       currentCityId: currentCity.id,
       currentCityName: currentCity.name,
       remainingTimeHours: this.remainingTime.value,
+      issuedWarrant,
+      resolution,
       availableLocations,
       availableTravelDestinations,
       visitedLocationNames,
@@ -560,13 +887,8 @@ export class Case {
    * El patron permite que la capa de aplicacion controle cuando publicarlos.
    */
   pullDomainEvents(): CaseDomainEvent[] {
-    // Copiamos los eventos para no exponer la referencia mutable interna.
     const eventsToPublish = [...this.domainEvents];
-
-    // Limpiamos el buffer porque ya no queremos republicar eventos anteriores.
     this.domainEvents = [];
-
-    // Entregamos la coleccion de eventos al caller.
     return eventsToPublish;
   }
 
@@ -574,7 +896,6 @@ export class Case {
    * Este helper resuelve la ciudad actual y falla si el aggregate quedo inconsistente.
    */
   getCurrentCity(): City {
-    // Reutilizamos la misma ruta de resolucion que usa el resto del aggregate.
     return this.getCityById(this.currentCityId);
   }
 
@@ -582,23 +903,37 @@ export class Case {
    * Este helper resuelve cualquier ciudad del caso por id.
    */
   private getCityById(cityId: string): City {
-    // Buscamos la ciudad cuyo id coincide con el solicitado.
     const city = this.cities.find((candidateCity) => candidateCity.id === cityId);
 
-    // Si no existe, el aggregate quedo corrupto y debemos fallar de forma explicita.
     if (!city) {
       throw new DomainRuleViolationError("A referenced city could not be resolved from the case state.");
     }
 
-    // Devolvemos la entidad de ciudad encontrada.
     return city;
+  }
+
+  /**
+   * Este helper resuelve cualquier locacion del caso por id.
+   * Se usa para derivar evidencia descubierta sin exponer la estructura interna a adapters.
+   */
+  private getLocationById(locationId: string) {
+    const location = this.cities
+      .flatMap((city) => city.locations)
+      .find((candidateLocation) => candidateLocation.id === locationId);
+
+    if (!location) {
+      throw new DomainRuleViolationError(
+        "A referenced location could not be resolved from the case state."
+      );
+    }
+
+    return location;
   }
 
   /**
    * Este helper encapsula la validacion repetida de estado esperado.
    */
   private ensureStateIs(expectedState: CaseState, message: string): void {
-    // Si el estado actual no coincide con el esperado, la operacion viola la state machine.
     if (this.state !== expectedState) {
       throw new DomainRuleViolationError(message);
     }
@@ -608,9 +943,204 @@ export class Case {
    * Este helper encapsula comandos permitidos en varios estados activos.
    */
   private ensureStateIsOneOf(expectedStates: ReadonlyArray<CaseState>, message: string): void {
-    // Si el estado actual no aparece en la lista permitida, la accion rompe la state machine.
     if (!expectedStates.includes(this.state)) {
       throw new DomainRuleViolationError(message);
+    }
+  }
+
+  /**
+   * Este helper compara la warrant emitida con el conjunto de rasgos requeridos del objetivo.
+   * En el MVP actual usamos igualdad de conjunto completa para mantener la regla simple y visible.
+   */
+  private doesIssuedWarrantMatchTarget(): boolean {
+    if (this.warrant === null) {
+      return false;
+    }
+
+    const targetTraitCodes = new Set(this.target.traits.map((trait) => trait.code));
+    const warrantTraitCodes = new Set(this.warrant.suspectedTraits.map((trait) => trait.code));
+
+    if (targetTraitCodes.size !== warrantTraitCodes.size) {
+      return false;
+    }
+
+    for (const targetTraitCode of targetTraitCodes) {
+      if (!warrantTraitCodes.has(targetTraitCode)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Este helper reconstruye los rasgos ya deducidos por el jugador a partir de locaciones visitadas.
+   * Se deriva del historial real del caso para que la vista publica no filtre informacion oculta.
+   */
+  private getDiscoveredTraits(): Trait[] {
+    const discoveredTraits: Trait[] = [];
+    const discoveredTraitCodes = new Set<string>();
+
+    // Recorremos el orden real de visita para preservar una progresion legible en la vista.
+    for (const visitedLocationId of this.visitedLocationIds) {
+      const visitedLocation = this.getLocationById(visitedLocationId);
+
+      if (visitedLocation.clue.type !== "trait" || !visitedLocation.clue.revealedTrait) {
+        continue;
+      }
+
+      if (discoveredTraitCodes.has(visitedLocation.clue.revealedTrait.code)) {
+        continue;
+      }
+
+      discoveredTraits.push(visitedLocation.clue.revealedTrait);
+      discoveredTraitCodes.add(visitedLocation.clue.revealedTrait.code);
+    }
+
+    return discoveredTraits;
+  }
+
+  /**
+   * Este helper reconstruye que destinos conoce el jugador desde la ciudad actual.
+   * El conocimiento puede venir de pistas visitadas en esta ciudad o del propio historial de viajes.
+   */
+  private getKnownTravelDestinationIdsForCurrentCity(): Set<string> {
+    const currentCity = this.getCurrentCity();
+    const knownDestinationCityIds = new Set<string>();
+
+    // Las pistas visitadas en la ciudad actual pueden revelar rutas principales o desvíos plausibles.
+    for (const location of currentCity.locations) {
+      if (!this.visitedLocationIds.includes(location.id)) {
+        continue;
+      }
+
+      if (location.clue.revealedDestinationCityId === undefined) {
+        continue;
+      }
+
+      knownDestinationCityIds.add(location.clue.revealedDestinationCityId);
+    }
+
+    // El historial propio del agente tambien revela rutas ya utilizadas en ambos sentidos.
+    for (const travelEntry of this.travelHistory) {
+      if (travelEntry.fromCityId === currentCity.id) {
+        knownDestinationCityIds.add(travelEntry.toCityId);
+      }
+
+      if (travelEntry.toCityId === currentCity.id) {
+        knownDestinationCityIds.add(travelEntry.fromCityId);
+      }
+    }
+
+    return knownDestinationCityIds;
+  }
+
+  /**
+   * Este helper detecta un estado activo donde ya no existe ninguna accion pagable.
+   * En ese punto el caso ya no es jugable ni recuperable y debe cerrarse como escape.
+   */
+  private resolveAsEscapeIfNoFurtherActionCanBePaid(): void {
+    // Nunca re-resolvemos un caso terminal ni intervenimos durante el briefing.
+    if (this.state === CaseState.BRIEFING || this.state === CaseState.RESOLVED) {
+      return;
+    }
+
+    // Durante `Chase` el arresto final no consume tiempo, asi que siempre queda una accion valida.
+    if (this.state === CaseState.CHASE) {
+      return;
+    }
+
+    const currentCity = this.getCurrentCity();
+
+    // En cualquier estado activo, viajar solo es viable si al menos una conexion cabe en el presupuesto.
+    const knownTravelDestinationIds = this.getKnownTravelDestinationIdsForCurrentCity();
+    const canAffordAnyTravel = currentCity.connections.some(
+      (connection) =>
+        knownTravelDestinationIds.has(connection.destinationCityId) &&
+        connection.travelTimeHours <= this.remainingTime.value
+    );
+
+    // Durante `WarrantIssued` el unico camino restante es seguir viajando hacia el cierre del caso.
+    if (this.state === CaseState.WARRANT_ISSUED) {
+      if (!canAffordAnyTravel) {
+        this.resolveAsEscape(CaseResolutionCause.TIME_EXPIRED);
+      }
+
+      return;
+    }
+
+    // Durante investigacion aun se puede seguir si queda una locacion nueva pagable o un viaje posible.
+    const canAffordAnyUnvisitedLocation = currentCity.locations.some(
+      (location) =>
+        !this.visitedLocationIds.includes(location.id) &&
+        LOCATION_VISIT_TIME_COST_HOURS <= this.remainingTime.value
+    );
+
+    if (!canAffordAnyUnvisitedLocation && !canAffordAnyTravel) {
+      this.resolveAsEscape(CaseResolutionCause.TIME_EXPIRED);
+    }
+  }
+
+  /**
+   * Este helper cierra el caso con captura exitosa.
+   */
+  private resolveAsArrestSuccess(): void {
+    this.state = CaseState.RESOLVED;
+    this.resolution = {
+      outcome: CaseResolutionOutcome.ARRESTED,
+      cause: CaseResolutionCause.ARREST_SUCCESS,
+      summary: "Cipher was arrested in the correct city with a valid warrant."
+    };
+
+    this.recordDomainEvent({
+      type: "CaseResolved",
+      caseId: this.id.value,
+      outcome: this.resolution.outcome,
+      cause: this.resolution.cause,
+      currentCityId: this.currentCityId,
+      remainingTimeHours: this.remainingTime.value
+    });
+  }
+
+  /**
+   * Este helper cierra el caso con escape de `Cipher`.
+   */
+  private resolveAsEscape(cause: EscapeResolutionCause): void {
+    this.state = CaseState.RESOLVED;
+    this.resolution = {
+      outcome: CaseResolutionOutcome.ESCAPED,
+      cause,
+      summary: this.buildEscapeSummary(cause)
+    };
+
+    this.recordDomainEvent({
+      type: "CaseResolved",
+      caseId: this.id.value,
+      outcome: this.resolution.outcome,
+      cause: this.resolution.cause,
+      currentCityId: this.currentCityId,
+      remainingTimeHours: this.remainingTime.value
+    });
+
+    this.recordDomainEvent({
+      type: "CipherEscaped",
+      caseId: this.id.value,
+      cause,
+      currentCityId: this.currentCityId
+    });
+  }
+
+  /**
+   * Este helper construye mensajes de resolucion legibles y estables.
+   */
+  private buildEscapeSummary(cause: EscapeResolutionCause): string {
+    switch (cause) {
+      case CaseResolutionCause.TIME_EXPIRED:
+        return "Cipher escaped because the remaining time budget no longer allowed a valid action.";
+      case CaseResolutionCause.WRONG_CITY:
+        return "Cipher escaped because the arrest was attempted in the wrong city.";
+      case CaseResolutionCause.WRONG_WARRANT:
+        return "Cipher escaped because the warrant did not match the required target traits.";
     }
   }
 
@@ -618,7 +1148,6 @@ export class Case {
    * Este helper agrega eventos al buffer interno del aggregate.
    */
   private recordDomainEvent(domainEvent: CaseDomainEvent): void {
-    // Guardamos una copia superficial del evento para evitar mutaciones externas futuras.
     this.domainEvents.push({ ...domainEvent });
   }
 }

@@ -14,8 +14,8 @@ El vertical slice implementado recorre un flujo pequeno pero completo:
 7. La CLI invoca `VisitLocation` para inspeccionar una locacion de la ciudad actual.
 8. El aggregate consume tiempo, revela la pista, emite `LocationVisited` y `ClueCollected`.
 9. La aplicacion persiste el nuevo estado y la CLI imprime la vista actualizada.
-10. La CLI invoca `TravelToCity` para moverse a una ciudad conectada.
-11. El aggregate consume tiempo segun la conexion, actualiza la ciudad actual, emite `CityTraveled` y la CLI imprime el nuevo contexto.
+10. La CLI invoca `TravelToCity` solo cuando una `route clue`, una `noise clue` o el historial de viaje ya revelaron un destino valido desde la ciudad actual.
+11. El aggregate consume tiempo segun la conexion, actualiza la ciudad actual, emite `CityTraveled` y la CLI imprime el nuevo contexto sin exponer conexiones ocultas.
 12. La CLI sigue inspeccionando locaciones hasta reunir suficiente evidencia de rasgos descubiertos.
 13. La CLI invoca `SubmitWarrant` para comprometer una hipotesis legal sobre `Cipher` usando solo esa evidencia visible.
 14. El aggregate registra la warrant, cambia a `WarrantIssued`, emite `WarrantIssued` y la CLI imprime la nueva fase del caso.
@@ -43,6 +43,10 @@ El vertical slice implementado recorre un flujo pequeno pero completo:
   - Define puertos abstractos para generacion, repositorio, aleatoriedad, eventos y telemetria.
 - `packages/infra/src/in-memory-case-repository.ts`
   - Provee persistencia en memoria para demo y tests.
+- `packages/infra/src/case-record-serialization.ts`
+  - Traduce el aggregate `Case` a snapshots planos y lo rehidrata sin filtrar detalles de storage al dominio.
+- `packages/infra/src/sqlite-case-repository.ts`
+  - Provee persistencia local real sobre un archivo `SQLite` y demuestra reemplazo de adapter.
 - `packages/infra/src/procedural-case-generator.ts`
   - Traduce una `seed` en un `Case` reproducible con validadores pequenos.
 - `packages/infra/src/deterministic-randomness-provider.ts`
@@ -67,7 +71,7 @@ Cada paquete compila su salida a `dist/` y los tests se emiten a `dist-tests/` d
 `CaseGenerator`, `CaseRepository`, `RandomnessProvider`, `EventBus` y `Telemetry` viven en contratos porque definen que necesita la aplicacion sin decir como se implementa.
 
 ### Infrastructure
-Los adapters `in-memory` y el generador procedural viven en infraestructura porque resuelven side effects concretos: construir el caso, guardar, publicar y registrar.
+Los adapters `in-memory`, `SQLite`, el mapper de snapshots y el generador procedural viven en infraestructura porque resuelven side effects concretos: construir el caso, guardar, publicar, rehidratar y registrar.
 
 ### Interface
 La CLI vive en `apps/cli` porque es un adapter de entrada. No modifica entidades directamente; solo invoca casos de uso.
@@ -80,7 +84,8 @@ La CLI vive en `apps/cli` porque es un adapter de entrada. No modifica entidades
 5. Termina en `packages/infra/src/*` para ver como se implementan esos puertos en esta fase.
 
 ## Que todavia no existe
-- Persistencia `SQLite`.
+- `Web adapter`.
+- Reanudacion interactiva de una sesion persistida desde la CLI.
 
 ## Por que este slice es util
-Aunque pequeno, este slice ya prueba una afirmacion arquitectonica importante: el dominio puede mutar y la aplicacion puede orquestarlo sin acoplarse a la CLI ni a una base de datos real. Ahora, ademas, el caso ya incluye una accion investigativa donde la UI solo ve rasgos descubiertos y no el perfil oculto completo de `Cipher`. Eso vuelve mas honesto el loop de deduccion antes de expandirlo con mayor variedad de casos.
+Aunque pequeno, este slice ya prueba una afirmacion arquitectonica importante: el dominio puede mutar y la aplicacion puede orquestarlo sin acoplarse ni a la CLI ni a un repositorio concreto. El mismo flujo hoy puede persistirse en memoria o en `SQLite`, y el aggregate vuelve a levantarse como objeto de dominio real en ambos casos. Ahora, ademas, el caso incluye dos filtros clave de conocimiento publico: la UI solo ve rasgos descubiertos y solo ve destinos respaldados por pistas de ruta o por historial de viaje. Eso vuelve mas honesto tanto el loop de deduccion como el de navegacion antes de expandirlos con mayor variedad de casos.
