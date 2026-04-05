@@ -23,6 +23,10 @@ Definir como se va a validar el sistema antes y durante la implementacion. La es
 - Validan adapters concretos con IO real cuando el valor arquitectonico depende del adapter.
 - En el estado actual cubren roundtrip de `SQLiteCaseRepository` para demostrar persistencia y rehidratacion del aggregate.
 
+#### CLI integration tests
+- Validan el adapter de terminal como proceso real cuando la UX del adapter forma parte del slice.
+- En el estado actual cubren `start -> visit -> travel -> status` sobre varias ejecuciones separadas compartiendo el mismo archivo `SQLite`.
+
 #### Generative / property-like tests
 - Verifican que toda `seed` valida produzca un caso resoluble.
 - Verifican que la misma `seed` reconstruya exactamente el mismo caso.

@@ -1,12 +1,15 @@
 /**
- * Este archivo implementa el primer adapter ejecutable del proyecto.
- * Su rol es demostrar que la arquitectura ya permite abrir un caso real
- * recorriendo dominio, aplicacion e infraestructura sin mezclar responsabilidades.
+ * Este archivo implementa el adapter principal de la CLI.
+ * Su responsabilidad es traducir comandos de terminal a casos de uso de aplicacion,
+ * manteniendo dos modos complementarios: demo automatica y sesion persistida por pasos.
  */
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import type { CaseRepository } from "@cipher/contracts";
+import type { Case } from "@cipher/domain";
 import {
   AttemptArrest,
+  GetCaseStatus,
   StartCase,
   SubmitWarrant,
   TravelToCity,
@@ -18,15 +21,48 @@ import {
   InMemoryCaseRepository,
   InMemoryEventBus,
   InMemoryTelemetry,
-  ProceduralCaseGenerator
+  ProceduralCaseGenerator,
+  SQLiteCaseRepository
 } from "@cipher/infra";
+import {
+  CliCommand,
+  createCliHelpText,
+  parseCliArguments,
+  type ParsedCliArguments
+} from "./cli-arguments.js";
+
+type CliCaseRepository = CaseRepository<Case> & {
+  close?: () => Promise<void>;
+};
+
+interface CliRuntimeContext {
+  caseRepository: CliCaseRepository;
+  storageDescription: string;
+  eventBus: InMemoryEventBus;
+  telemetry: InMemoryTelemetry;
+  startCase: StartCase;
+  getCaseStatus: GetCaseStatus;
+  visitLocation: VisitLocation;
+  travelToCity: TravelToCity;
+  submitWarrant: SubmitWarrant;
+  attemptArrest: AttemptArrest;
+}
 
 /**
  * Este helper imprime una vista amigable del caso para la terminal.
+ * La CLI muestra siempre `caseId` y storage para hacer visible que la sesion puede persistirse.
  */
-function printCaseStatus(title: string, caseStatusView: CaseStatusView): void {
+function printCaseStatus(
+  title: string,
+  caseStatusView: CaseStatusView,
+  storageDescription: string
+): void {
   // Imprimimos una separacion visual para que la salida sea mas facil de leer.
   console.log(`=== ${title} ===`);
+
+  // Mostramos metadatos tecnicos basicos de la sesion antes del resumen narrativo.
+  console.log(`Case ID: ${caseStatusView.caseId}`);
+  console.log(`Storage: ${storageDescription}`);
 
   // Imprimimos el resumen principal del caso.
   console.log(caseStatusView.headline);
@@ -87,7 +123,7 @@ function printCaseStatus(title: string, caseStatusView: CaseStatusView): void {
     }
   }
 
-  // Mostramos los destinos de viaje conectados a la ciudad actual.
+  // Mostramos los destinos de viaje conocidos desde la ciudad actual.
   if (caseStatusView.availableTravelDestinations.length === 0) {
     console.log("Travel options: none from this city.");
   } else {
@@ -113,8 +149,17 @@ function printCaseStatus(title: string, caseStatusView: CaseStatusView): void {
 }
 
 /**
+ * Este helper imprime el rastro tecnico de una invocacion mutante de la CLI.
+ * Mantenerlo visible ayuda a conectar el adapter con eventos y telemetria en modo didactico.
+ */
+function printSideEffectSummary(cliRuntimeContext: CliRuntimeContext): void {
+  console.log(`Published domain events: ${cliRuntimeContext.eventBus.publishedEvents.length}`);
+  console.log(`Recorded telemetry entries: ${cliRuntimeContext.telemetry.recordedEntries.length}`);
+}
+
+/**
  * Este helper selecciona los rasgos que compondran la warrant.
- * En modo no interactivo usa todos los rasgos disponibles para que la demo siga siendo determinista.
+ * En modo no interactivo usa todos los rasgos disponibles para que la demo y los comandos sigan siendo automatizables.
  */
 async function chooseTraitsForWarrant(
   caseStatusView: CaseStatusView
@@ -182,7 +227,8 @@ async function collectTraitEvidenceUntil(
   visitLocation: VisitLocation,
   caseStatusView: CaseStatusView,
   minimumDiscoveredTraitCount: number,
-  titlePrefix: string
+  titlePrefix: string,
+  storageDescription: string
 ): Promise<CaseStatusView> {
   let currentCaseStatusView = caseStatusView;
 
@@ -205,7 +251,8 @@ async function collectTraitEvidenceUntil(
     console.log("");
     printCaseStatus(
       `${titlePrefix} (${currentCaseStatusView.discoveredTraits.length}/${minimumDiscoveredTraitCount} trait clues)`,
-      currentCaseStatusView
+      currentCaseStatusView,
+      storageDescription
     );
   }
 
@@ -214,7 +261,7 @@ async function collectTraitEvidenceUntil(
 
 /**
  * Este helper selecciona una locacion a visitar.
- * En modo no interactivo elige la primera pendiente para mantener la demo automatizable.
+ * En modo no interactivo elige la primera pendiente para mantener la CLI automatizable.
  */
 async function chooseLocationToVisit(caseStatusView: CaseStatusView): Promise<string | null> {
   // Solo tiene sentido pedir seleccion si queda al menos una locacion sin visitar.
@@ -246,7 +293,7 @@ async function chooseLocationToVisit(caseStatusView: CaseStatusView): Promise<st
     const rawAnswer = await readlineInterface.question("Location number: ");
     const selectedIndex = Number.parseInt(rawAnswer.trim(), 10) - 1;
 
-    // Si la entrada no es valida, degradamos a la primera opcion para no romper la demo.
+    // Si la entrada no es valida, degradamos a la primera opcion para no romper la CLI.
     if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= pendingLocations.length) {
       console.log("Invalid selection. The first pending location will be inspected.");
       return pendingLocations[0].id;
@@ -262,10 +309,10 @@ async function chooseLocationToVisit(caseStatusView: CaseStatusView): Promise<st
 
 /**
  * Este helper selecciona una ciudad destino a la que viajar.
- * En modo no interactivo elige la primera conexion disponible para mantener la demo automatizable.
+ * En modo no interactivo elige la primera conexion disponible para mantener la CLI automatizable.
  */
 async function chooseDestinationCity(caseStatusView: CaseStatusView): Promise<string | null> {
-  // Si no hay conexiones salientes, no tiene sentido pedir una decision de viaje.
+  // Si no hay conexiones salientes conocidas, no tiene sentido pedir una decision de viaje.
   if (caseStatusView.availableTravelDestinations.length === 0) {
     return null;
   }
@@ -289,7 +336,7 @@ async function chooseDestinationCity(caseStatusView: CaseStatusView): Promise<st
     const rawAnswer = await readlineInterface.question("City number: ");
     const selectedIndex = Number.parseInt(rawAnswer.trim(), 10) - 1;
 
-    // Si la entrada no es valida, degradamos a la primera opcion para no romper la demo.
+    // Si la entrada no es valida, degradamos a la primera opcion para no romper la CLI.
     if (
       !Number.isInteger(selectedIndex) ||
       selectedIndex < 0 ||
@@ -308,78 +355,99 @@ async function chooseDestinationCity(caseStatusView: CaseStatusView): Promise<st
 }
 
 /**
- * Esta funcion arma el grafo de dependencias del vertical slice y ejecuta la demo.
+ * Este helper crea el runtime comun de la CLI a partir del comando elegido.
+ * El mismo adapter puede funcionar sobre memoria o sobre `SQLite` sin cambiar casos de uso.
  */
-async function main(): Promise<void> {
-  // Elegimos una `seed` fija por defecto, pero permitimos sobreescribirla desde la terminal.
-  const selectedSeed = process.argv[2] ?? DEMO_CASE_SEED;
-
-  // Creamos el repositorio `in-memory` vacio porque `StartCase` ahora construye el aggregate.
-  const caseRepository = new InMemoryCaseRepository();
-
-  // Creamos un bus de eventos en memoria para observar lo que publica la aplicacion.
+function createCliRuntimeContext(parsedCliArguments: ParsedCliArguments): CliRuntimeContext {
+  const caseRepository = createCaseRepository(parsedCliArguments);
+  const storageDescription = parsedCliArguments.usePersistentStorage
+    ? `SQLite (${parsedCliArguments.databaseFilePath})`
+    : "InMemory (ephemeral)";
   const eventBus = new InMemoryEventBus();
-
-  // Creamos un collector simple de telemetria para el mismo flujo.
   const telemetry = new InMemoryTelemetry();
-
-  // Creamos el generador procedural concreto que traducira la `seed` en un caso reproducible.
   const caseGenerator = new ProceduralCaseGenerator();
 
-  // Instanciamos el caso de uso que inicia la investigacion.
-  const startCase = new StartCase({
-    caseGenerator,
+  return {
     caseRepository,
+    storageDescription,
     eventBus,
-    telemetry
-  });
+    telemetry,
+    startCase: new StartCase({
+      caseGenerator,
+      caseRepository,
+      eventBus,
+      telemetry
+    }),
+    getCaseStatus: new GetCaseStatus({
+      caseRepository
+    }),
+    visitLocation: new VisitLocation({
+      caseRepository,
+      eventBus,
+      telemetry
+    }),
+    travelToCity: new TravelToCity({
+      caseRepository,
+      eventBus,
+      telemetry
+    }),
+    submitWarrant: new SubmitWarrant({
+      caseRepository,
+      eventBus,
+      telemetry
+    }),
+    attemptArrest: new AttemptArrest({
+      caseRepository,
+      eventBus,
+      telemetry
+    })
+  };
+}
 
-  // Instanciamos el caso de uso que revela pistas a traves de una visita real.
-  const visitLocation = new VisitLocation({
-    caseRepository,
-    eventBus,
-    telemetry
-  });
+function createCaseRepository(parsedCliArguments: ParsedCliArguments): CliCaseRepository {
+  if (!parsedCliArguments.usePersistentStorage) {
+    return new InMemoryCaseRepository();
+  }
 
-  // Instanciamos el caso de uso que mueve al agente entre ciudades conectadas.
-  const travelToCity = new TravelToCity({
-    caseRepository,
-    eventBus,
-    telemetry
-  });
+  if (!parsedCliArguments.databaseFilePath) {
+    throw new Error("Persistent CLI mode requires a database file path.");
+  }
 
-  // Instanciamos el caso de uso que registra la warrant emitida por el jugador.
-  const submitWarrant = new SubmitWarrant({
-    caseRepository,
-    eventBus,
-    telemetry
+  return new SQLiteCaseRepository({
+    databaseFilePath: parsedCliArguments.databaseFilePath
   });
+}
 
-  // Instanciamos el caso de uso que intenta cerrar el caso con la captura final.
-  const attemptArrest = new AttemptArrest({
-    caseRepository,
-    eventBus,
-    telemetry
-  });
+async function closeCliRuntimeContext(cliRuntimeContext: CliRuntimeContext): Promise<void> {
+  await cliRuntimeContext.caseRepository.close?.();
+}
 
+/**
+ * Este helper ejecuta el demo automatico que ya existia antes de la sesion persistida.
+ */
+async function runDemoWorkflow(
+  cliRuntimeContext: CliRuntimeContext,
+  selectedSeed: string
+): Promise<void> {
   // Ejecutamos el caso de uso de inicio usando una `seed` reproducible.
-  const openedCaseStatusView = await startCase.execute({
+  const openedCaseStatusView = await cliRuntimeContext.startCase.execute({
     seed: selectedSeed
   });
 
   // Imprimimos la vista antes de inspeccionar una locacion.
   console.log(`Seed: ${selectedSeed}`);
-  printCaseStatus("Cipher CLI Demo", openedCaseStatusView);
+  printCaseStatus("Cipher CLI Demo", openedCaseStatusView, cliRuntimeContext.storageDescription);
 
   // Conservamos la ultima vista conocida para encadenar acciones sobre el mismo caso.
   let currentCaseStatusView = openedCaseStatusView;
 
   // Recolectamos la primera pieza de evidencia de rasgo antes de abandonar la ciudad inicial.
   currentCaseStatusView = await collectTraitEvidenceUntil(
-    visitLocation,
+    cliRuntimeContext.visitLocation,
     currentCaseStatusView,
     1,
-    "After Collecting Initial Evidence"
+    "After Collecting Initial Evidence",
+    cliRuntimeContext.storageDescription
   );
 
   // Elegimos una ciudad conectada para demostrar el subloop de navegacion.
@@ -387,21 +455,26 @@ async function main(): Promise<void> {
 
   // Si hay una conexion disponible, ejecutamos el viaje y mostramos el nuevo contexto.
   if (selectedDestinationCityId) {
-    currentCaseStatusView = await travelToCity.execute({
+    currentCaseStatusView = await cliRuntimeContext.travelToCity.execute({
       caseId: currentCaseStatusView.caseId,
       destinationCityId: selectedDestinationCityId
     });
 
     console.log("");
-    printCaseStatus("After Traveling To City", currentCaseStatusView);
+    printCaseStatus(
+      "After Traveling To City",
+      currentCaseStatusView,
+      cliRuntimeContext.storageDescription
+    );
   }
 
   // Recolectamos la segunda pieza de evidencia necesaria antes de comprometer la warrant.
   currentCaseStatusView = await collectTraitEvidenceUntil(
-    visitLocation,
+    cliRuntimeContext.visitLocation,
     currentCaseStatusView,
     2,
-    "After Collecting More Evidence"
+    "After Collecting More Evidence",
+    cliRuntimeContext.storageDescription
   );
 
   // Elegimos los rasgos para demostrar el paso de deduccion legal del loop.
@@ -409,13 +482,17 @@ async function main(): Promise<void> {
 
   // Si la warrant es aplicable en el estado actual, la emitimos y mostramos la nueva fase del caso.
   if (selectedTraitsForWarrant) {
-    currentCaseStatusView = await submitWarrant.execute({
+    currentCaseStatusView = await cliRuntimeContext.submitWarrant.execute({
       caseId: currentCaseStatusView.caseId,
       suspectedTraits: selectedTraitsForWarrant
     });
 
     console.log("");
-    printCaseStatus("After Submitting Warrant", currentCaseStatusView);
+    printCaseStatus(
+      "After Submitting Warrant",
+      currentCaseStatusView,
+      cliRuntimeContext.storageDescription
+    );
   }
 
   // Si la warrant ya fue emitida pero aun no estamos en persecucion final, viajamos una vez mas.
@@ -423,30 +500,276 @@ async function main(): Promise<void> {
     const finalChaseDestinationCityId = await chooseDestinationCity(currentCaseStatusView);
 
     if (finalChaseDestinationCityId) {
-      currentCaseStatusView = await travelToCity.execute({
+      currentCaseStatusView = await cliRuntimeContext.travelToCity.execute({
         caseId: currentCaseStatusView.caseId,
         destinationCityId: finalChaseDestinationCityId
       });
 
       console.log("");
-      printCaseStatus("After Traveling Under Warrant", currentCaseStatusView);
+      printCaseStatus(
+        "After Traveling Under Warrant",
+        currentCaseStatusView,
+        cliRuntimeContext.storageDescription
+      );
     }
   }
 
   // Si llegamos a la fase de persecucion, intentamos el arresto final.
   if (currentCaseStatusView.state === "Chase") {
-    currentCaseStatusView = await attemptArrest.execute({
+    currentCaseStatusView = await cliRuntimeContext.attemptArrest.execute({
       caseId: currentCaseStatusView.caseId
     });
 
     console.log("");
-    printCaseStatus("After Attempting Arrest", currentCaseStatusView);
+    printCaseStatus(
+      "After Attempting Arrest",
+      currentCaseStatusView,
+      cliRuntimeContext.storageDescription
+    );
   }
 
   // Imprimimos evidencia de eventos y telemetria para hacer visible la orquestacion.
-  console.log(`Published domain events: ${eventBus.publishedEvents.length}`);
-  console.log(`Recorded telemetry entries: ${telemetry.recordedEntries.length}`);
+  printSideEffectSummary(cliRuntimeContext);
 }
 
-// Ejecutamos la funcion principal y dejamos que Node marque fallo si algo explota.
-void main();
+async function runStartCommand(
+  cliRuntimeContext: CliRuntimeContext,
+  parsedCliArguments: ParsedCliArguments
+): Promise<void> {
+  const selectedSeed = parsedCliArguments.seed ?? DEMO_CASE_SEED;
+  const openedCaseStatusView = await cliRuntimeContext.startCase.execute({
+    seed: selectedSeed
+  });
+
+  console.log(`Seed: ${selectedSeed}`);
+  printCaseStatus("Started Case", openedCaseStatusView, cliRuntimeContext.storageDescription);
+  printSideEffectSummary(cliRuntimeContext);
+}
+
+async function runStatusCommand(
+  cliRuntimeContext: CliRuntimeContext,
+  parsedCliArguments: ParsedCliArguments
+): Promise<void> {
+  const commandName =
+    parsedCliArguments.command === CliCommand.RESUME ? CliCommand.RESUME : CliCommand.STATUS;
+  const caseId = requireCaseId(parsedCliArguments, commandName);
+  const caseStatusView = await cliRuntimeContext.getCaseStatus.execute({
+    caseId
+  });
+
+  printCaseStatus(
+    parsedCliArguments.command === CliCommand.RESUME ? "Resumed Case" : "Current Case Status",
+    caseStatusView,
+    cliRuntimeContext.storageDescription
+  );
+}
+
+async function runVisitCommand(
+  cliRuntimeContext: CliRuntimeContext,
+  parsedCliArguments: ParsedCliArguments
+): Promise<void> {
+  const caseId = requireCaseId(parsedCliArguments, CliCommand.VISIT);
+  const locationId =
+    parsedCliArguments.locationId ??
+    (await resolveLocationIdFromCurrentCase(cliRuntimeContext, caseId));
+
+  if (!locationId) {
+    throw new Error("No pending location is available to visit.");
+  }
+
+  const caseStatusView = await cliRuntimeContext.visitLocation.execute({
+    caseId,
+    locationId
+  });
+
+  printCaseStatus("After Visiting Location", caseStatusView, cliRuntimeContext.storageDescription);
+  printSideEffectSummary(cliRuntimeContext);
+}
+
+async function runTravelCommand(
+  cliRuntimeContext: CliRuntimeContext,
+  parsedCliArguments: ParsedCliArguments
+): Promise<void> {
+  const caseId = requireCaseId(parsedCliArguments, CliCommand.TRAVEL);
+  const destinationCityId =
+    parsedCliArguments.destinationCityId ??
+    (await resolveDestinationCityIdFromCurrentCase(cliRuntimeContext, caseId));
+
+  if (!destinationCityId) {
+    throw new Error("No known travel destination is available from the current city.");
+  }
+
+  const caseStatusView = await cliRuntimeContext.travelToCity.execute({
+    caseId,
+    destinationCityId
+  });
+
+  printCaseStatus("After Traveling To City", caseStatusView, cliRuntimeContext.storageDescription);
+  printSideEffectSummary(cliRuntimeContext);
+}
+
+async function runWarrantCommand(
+  cliRuntimeContext: CliRuntimeContext,
+  parsedCliArguments: ParsedCliArguments
+): Promise<void> {
+  const caseId = requireCaseId(parsedCliArguments, CliCommand.WARRANT);
+  const currentCaseStatusView = await cliRuntimeContext.getCaseStatus.execute({
+    caseId
+  });
+  const selectedTraitsForWarrant = await resolveTraitsForWarrantFromCurrentCase(
+    currentCaseStatusView,
+    parsedCliArguments.traitCodes
+  );
+
+  if (!selectedTraitsForWarrant || selectedTraitsForWarrant.length === 0) {
+    throw new Error("No discovered trait evidence is available to build a warrant.");
+  }
+
+  const caseStatusView = await cliRuntimeContext.submitWarrant.execute({
+    caseId,
+    suspectedTraits: selectedTraitsForWarrant
+  });
+
+  printCaseStatus("After Submitting Warrant", caseStatusView, cliRuntimeContext.storageDescription);
+  printSideEffectSummary(cliRuntimeContext);
+}
+
+async function runArrestCommand(
+  cliRuntimeContext: CliRuntimeContext,
+  parsedCliArguments: ParsedCliArguments
+): Promise<void> {
+  const caseId = requireCaseId(parsedCliArguments, CliCommand.ARREST);
+  const caseStatusView = await cliRuntimeContext.attemptArrest.execute({
+    caseId
+  });
+
+  printCaseStatus("After Attempting Arrest", caseStatusView, cliRuntimeContext.storageDescription);
+  printSideEffectSummary(cliRuntimeContext);
+}
+
+async function resolveLocationIdFromCurrentCase(
+  cliRuntimeContext: CliRuntimeContext,
+  caseId: string
+): Promise<string | null> {
+  const currentCaseStatusView = await cliRuntimeContext.getCaseStatus.execute({
+    caseId
+  });
+
+  return chooseLocationToVisit(currentCaseStatusView);
+}
+
+async function resolveDestinationCityIdFromCurrentCase(
+  cliRuntimeContext: CliRuntimeContext,
+  caseId: string
+): Promise<string | null> {
+  const currentCaseStatusView = await cliRuntimeContext.getCaseStatus.execute({
+    caseId
+  });
+
+  return chooseDestinationCity(currentCaseStatusView);
+}
+
+async function resolveTraitsForWarrantFromCurrentCase(
+  currentCaseStatusView: CaseStatusView,
+  explicitTraitCodes: ReadonlyArray<string>
+): Promise<CaseStatusView["discoveredTraits"] | null> {
+  if (explicitTraitCodes.length === 0) {
+    return chooseTraitsForWarrant(currentCaseStatusView);
+  }
+
+  const discoveredTraitsByCode = new Map(
+    currentCaseStatusView.discoveredTraits.map((trait) => [trait.code, trait] as const)
+  );
+  const selectedTraits = [];
+  const missingTraitCodes: string[] = [];
+
+  // Convertimos codigos primitivos a la misma estructura de vista que espera `SubmitWarrant`.
+  for (const explicitTraitCode of explicitTraitCodes) {
+    const discoveredTrait = discoveredTraitsByCode.get(explicitTraitCode);
+
+    if (!discoveredTrait) {
+      missingTraitCodes.push(explicitTraitCode);
+      continue;
+    }
+
+    selectedTraits.push(discoveredTrait);
+  }
+
+  if (missingTraitCodes.length > 0) {
+    throw new Error(
+      `The current case does not expose discovered trait evidence for: ${missingTraitCodes.join(", ")}.`
+    );
+  }
+
+  return selectedTraits;
+}
+
+function requireCaseId(
+  parsedCliArguments: ParsedCliArguments,
+  commandName: Exclude<CliCommand, typeof CliCommand.DEMO | typeof CliCommand.HELP>
+): string {
+  if (!parsedCliArguments.caseId) {
+    throw new Error(`The ${commandName} command requires a caseId.`);
+  }
+
+  return parsedCliArguments.caseId;
+}
+
+/**
+ * Esta funcion interpreta los argumentos de terminal y despacha al flujo correcto.
+ */
+async function main(): Promise<void> {
+  const parsedCliArguments = parseCliArguments(process.argv.slice(2));
+
+  if (parsedCliArguments.command === CliCommand.HELP) {
+    console.log(createCliHelpText());
+    return;
+  }
+
+  const cliRuntimeContext = createCliRuntimeContext(parsedCliArguments);
+
+  try {
+    switch (parsedCliArguments.command) {
+      case CliCommand.DEMO:
+        await runDemoWorkflow(
+          cliRuntimeContext,
+          parsedCliArguments.seed ?? DEMO_CASE_SEED
+        );
+        return;
+      case CliCommand.START:
+        await runStartCommand(cliRuntimeContext, parsedCliArguments);
+        return;
+      case CliCommand.STATUS:
+      case CliCommand.RESUME:
+        await runStatusCommand(cliRuntimeContext, parsedCliArguments);
+        return;
+      case CliCommand.VISIT:
+        await runVisitCommand(cliRuntimeContext, parsedCliArguments);
+        return;
+      case CliCommand.TRAVEL:
+        await runTravelCommand(cliRuntimeContext, parsedCliArguments);
+        return;
+      case CliCommand.WARRANT:
+        await runWarrantCommand(cliRuntimeContext, parsedCliArguments);
+        return;
+      case CliCommand.ARREST:
+        await runArrestCommand(cliRuntimeContext, parsedCliArguments);
+        return;
+    }
+  } finally {
+    await closeCliRuntimeContext(cliRuntimeContext);
+  }
+}
+
+function handleCliError(error: unknown): void {
+  if (error instanceof Error) {
+    console.error(`CLI error: ${error.message}`);
+  } else {
+    console.error("CLI error: an unknown error occurred.");
+  }
+
+  process.exitCode = 1;
+}
+
+// Ejecutamos la funcion principal y degradamos errores a un mensaje corto de terminal.
+void main().catch(handleCliError);

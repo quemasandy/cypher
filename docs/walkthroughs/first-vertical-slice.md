@@ -22,6 +22,11 @@ El vertical slice implementado recorre un flujo pequeno pero completo:
 15. La CLI vuelve a viajar bajo warrant hasta alcanzar la ciudad final correcta.
 16. El aggregate entra en `Chase`, la CLI invoca `AttemptArrest` y el caso termina en `Resolved` con captura o escape.
 
+Ademas del walkthrough automatico, la CLI ahora expone un modo persistido por comandos pequenos:
+- `start` crea un caso y lo guarda en `SQLite`.
+- `status` o `resume` vuelve a leer el mismo caso desde disco.
+- `visit`, `travel`, `warrant` y `arrest` aplican exactamente los mismos casos de uso sobre una sesion ya persistida.
+
 ## Mapa de archivos
 - `packages/domain/src/case.ts`
   - Implementa el aggregate root y concentra la state machine inicial.
@@ -54,7 +59,9 @@ El vertical slice implementado recorre un flujo pequeno pero completo:
 - `packages/infra/src/in-memory-support.ts`
   - Provee adapters simples para eventos, telemetria y una `seed` demo estable.
 - `apps/cli/src/index.ts`
-  - Cablea dependencias, acepta una `seed` y muestra el flujo completo en terminal.
+  - Cablea dependencias, acepta comandos de demo o sesion persistida y muestra el flujo completo en terminal.
+- `apps/cli/src/cli-arguments.ts`
+  - Traduce `argv` a comandos semanticos de CLI sin mezclar parseo con ejecucion.
 
 ## Nota de compilacion
 El source del vertical slice esta escrito en `TypeScript`.
@@ -85,7 +92,6 @@ La CLI vive en `apps/cli` porque es un adapter de entrada. No modifica entidades
 
 ## Que todavia no existe
 - `Web adapter`.
-- Reanudacion interactiva de una sesion persistida desde la CLI.
 
 ## Por que este slice es util
-Aunque pequeno, este slice ya prueba una afirmacion arquitectonica importante: el dominio puede mutar y la aplicacion puede orquestarlo sin acoplarse ni a la CLI ni a un repositorio concreto. El mismo flujo hoy puede persistirse en memoria o en `SQLite`, y el aggregate vuelve a levantarse como objeto de dominio real en ambos casos. Ahora, ademas, el caso incluye dos filtros clave de conocimiento publico: la UI solo ve rasgos descubiertos y solo ve destinos respaldados por pistas de ruta o por historial de viaje. Eso vuelve mas honesto tanto el loop de deduccion como el de navegacion antes de expandirlos con mayor variedad de casos.
+Aunque pequeno, este slice ya prueba una afirmacion arquitectonica importante: el dominio puede mutar y la aplicacion puede orquestarlo sin acoplarse ni a la CLI ni a un repositorio concreto. El mismo flujo hoy puede persistirse en memoria o en `SQLite`, y el aggregate vuelve a levantarse como objeto de dominio real en ambos casos. La CLI, ademas, ya puede reanudar una sesion real entre procesos separados usando el mismo archivo `SQLite`, lo que convierte la persistencia en una capacidad visible para el usuario y no solo en una prueba de infraestructura. Ahora, ademas, el caso incluye dos filtros clave de conocimiento publico: la UI solo ve rasgos descubiertos y solo ve destinos respaldados por pistas de ruta o por historial de viaje. Eso vuelve mas honesto tanto el loop de deduccion como el de navegacion antes de expandirlos con mayor variedad de casos.

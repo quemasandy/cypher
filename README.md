@@ -27,9 +27,19 @@ npm run build
 npm test
 npm run demo
 npm run demo -- tutorial-case-v1
+npm run demo -- start tutorial-case-v1
+npm run demo -- status <caseId>
+npm run demo -- visit <caseId>
+npm run demo -- travel <caseId>
+npm run demo -- warrant <caseId>
+npm run demo -- arrest <caseId>
 ```
 
 El codigo fuente del vertical slice vive ahora en `TypeScript` y cada paquete compila sus artefactos a `dist/`. Los tests compilados se emiten a `dist-tests/` para no mezclar build de producto con build de pruebas.
+
+La CLI ahora tiene dos modos:
+- `demo`: recorre automaticamente un caso completo como walkthrough ejecutable.
+- `command mode`: abre y reanuda casos persistidos en `SQLite`, por defecto en `.local/cipher-cli.sqlite`.
 
 ### Walkthroughs
 - `docs/walkthroughs/first-vertical-slice.md`
