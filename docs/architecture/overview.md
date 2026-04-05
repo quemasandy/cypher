@@ -53,12 +53,16 @@ docs/
 #### Infrastructure
 - Repositorios concretos.
 - `CaseGenerator`, `RandomnessProvider`, `Clock`, `EventBus`, `Telemetry` concretos.
-- Adaptadores a `SQLite`, file storage, backend HTTP o cloud futura.
+- Adaptadores a `SQLite`, `localStorage`, file storage, backend HTTP o cloud futura.
+- En el estado actual, la observabilidad local se resuelve con `InMemoryTelemetry`, `CompositeTelemetry` y `StructuredFileTelemetry`.
 - Mappers de persistencia que traduzcan aggregates a snapshots planos cuando un adapter lo necesite.
+- Entry points browser-safe cuando una UI web deba reutilizar la infraestructura sin cargar adapters exclusivos de Node.
+- En el estado actual, `infra/docker` empaqueta el adapter web como runtime generico sin introducir todavia una plataforma cloud.
 
 #### Interface
 - `CLI` para el MVP.
-- `Web UI` y eventualmente `API` como adapters adicionales.
+- `Web UI` local-first final como segundo adapter real, con briefing guiado, progreso visible, exporte de reportes y continuidad de sesion en browser.
+- `API` como adapter adicional futuro.
 
 ### Interfaces canonicas de aplicacion
 - Casos de uso de entrada:
@@ -76,14 +80,17 @@ docs/
 ### Evolucion tecnica planeada
 1. `CLI + InMemoryCaseRepository`
 2. `CLI + SQLiteCaseRepository`
-3. `CLI/Web + SQLiteCaseRepository`
-4. `Web/API + cloud adapters`
+3. `CLI/Web + SQLiteCaseRepository y LocalStorageCaseRepository`
+4. `CLI + SQLiteCaseRepository + StructuredFileTelemetry`
+5. `Web final local-first + bundle portable + generic container runtime`
+6. `Web/API + cloud adapters`
 
 ## Implicaciones
 - La arquitectura exige mas disciplina inicial, pero reduce costo de cambio futuro.
 - El reemplazo de adapters debe validarse con tests de aplicacion y contratos.
 - La estructura de carpetas tiene que reflejar los limites conceptuales, no solo preferencias cosmeticas.
 - Cuando un adapter necesita serializar aggregates complejos, la traduccion debe vivir fuera de `domain` para conservar el nucleo libre de detalles de storage.
+- La observabilidad tambien sigue el contrato hexagonal: la aplicacion solo conoce `Telemetry`, mientras CLI decide si fan-out a memoria, archivo local o futuros destinos remotos.
 
 ## Fuera de alcance
 - Microservicios.

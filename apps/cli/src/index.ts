@@ -5,7 +5,7 @@
  */
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import type { CaseRepository } from "@cipher/contracts";
+import type { CaseRepository, Telemetry } from "@cipher/contracts";
 import type { Case } from "@cipher/domain";
 import {
   AttemptArrest,
@@ -17,12 +17,14 @@ import {
   type CaseStatusView
 } from "@cipher/application";
 import {
+  CompositeTelemetry,
   DEMO_CASE_SEED,
   InMemoryCaseRepository,
   InMemoryEventBus,
   InMemoryTelemetry,
   ProceduralCaseGenerator,
-  SQLiteCaseRepository
+  SQLiteCaseRepository,
+  StructuredFileTelemetry
 } from "@cipher/infra";
 import {
   CliCommand,
@@ -39,7 +41,8 @@ interface CliRuntimeContext {
   caseRepository: CliCaseRepository;
   storageDescription: string;
   eventBus: InMemoryEventBus;
-  telemetry: InMemoryTelemetry;
+  visibleTelemetry: InMemoryTelemetry;
+  structuredTelemetryFilePath: string | null;
   startCase: StartCase;
   getCaseStatus: GetCaseStatus;
   visitLocation: VisitLocation;
@@ -154,7 +157,11 @@ function printCaseStatus(
  */
 function printSideEffectSummary(cliRuntimeContext: CliRuntimeContext): void {
   console.log(`Published domain events: ${cliRuntimeContext.eventBus.publishedEvents.length}`);
-  console.log(`Recorded telemetry entries: ${cliRuntimeContext.telemetry.recordedEntries.length}`);
+  console.log(`Recorded telemetry entries: ${cliRuntimeContext.visibleTelemetry.recordedEntries.length}`);
+
+  if (cliRuntimeContext.structuredTelemetryFilePath) {
+    console.log(`Structured telemetry file: ${cliRuntimeContext.structuredTelemetryFilePath}`);
+  }
 }
 
 /**
@@ -364,19 +371,20 @@ function createCliRuntimeContext(parsedCliArguments: ParsedCliArguments): CliRun
     ? `SQLite (${parsedCliArguments.databaseFilePath})`
     : "InMemory (ephemeral)";
   const eventBus = new InMemoryEventBus();
-  const telemetry = new InMemoryTelemetry();
+  const cliTelemetryRuntime = createCliTelemetryRuntime(parsedCliArguments);
   const caseGenerator = new ProceduralCaseGenerator();
 
   return {
     caseRepository,
     storageDescription,
     eventBus,
-    telemetry,
+    visibleTelemetry: cliTelemetryRuntime.visibleTelemetry,
+    structuredTelemetryFilePath: cliTelemetryRuntime.structuredTelemetryFilePath,
     startCase: new StartCase({
       caseGenerator,
       caseRepository,
       eventBus,
-      telemetry
+      telemetry: cliTelemetryRuntime.telemetry
     }),
     getCaseStatus: new GetCaseStatus({
       caseRepository
@@ -384,23 +392,57 @@ function createCliRuntimeContext(parsedCliArguments: ParsedCliArguments): CliRun
     visitLocation: new VisitLocation({
       caseRepository,
       eventBus,
-      telemetry
+      telemetry: cliTelemetryRuntime.telemetry
     }),
     travelToCity: new TravelToCity({
       caseRepository,
       eventBus,
-      telemetry
+      telemetry: cliTelemetryRuntime.telemetry
     }),
     submitWarrant: new SubmitWarrant({
       caseRepository,
       eventBus,
-      telemetry
+      telemetry: cliTelemetryRuntime.telemetry
     }),
     attemptArrest: new AttemptArrest({
       caseRepository,
       eventBus,
-      telemetry
+      telemetry: cliTelemetryRuntime.telemetry
     })
+  };
+}
+
+interface CliTelemetryRuntime {
+  telemetry: Telemetry;
+  visibleTelemetry: InMemoryTelemetry;
+  structuredTelemetryFilePath: string | null;
+}
+
+function createCliTelemetryRuntime(
+  parsedCliArguments: ParsedCliArguments
+): CliTelemetryRuntime {
+  const visibleTelemetry = new InMemoryTelemetry();
+
+  // Conservamos la telemetria en memoria para trazas didacticas aunque tambien exista salida durable.
+  if (!parsedCliArguments.telemetryFilePath) {
+    return {
+      telemetry: visibleTelemetry,
+      visibleTelemetry,
+      structuredTelemetryFilePath: null
+    };
+  }
+
+  const structuredFileTelemetry = new StructuredFileTelemetry({
+    filePath: parsedCliArguments.telemetryFilePath,
+    source: parsedCliArguments.usePersistentStorage ? "cli-persistent" : "cli-demo"
+  });
+
+  return {
+    telemetry: new CompositeTelemetry({
+      telemetryAdapters: [visibleTelemetry, structuredFileTelemetry]
+    }),
+    visibleTelemetry,
+    structuredTelemetryFilePath: parsedCliArguments.telemetryFilePath
   };
 }
 

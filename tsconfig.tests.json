@@ -10,7 +10,11 @@
     "tsBuildInfoFile": "./dist-tests/.tsbuildinfo",
     "types": ["node"]
   },
-  "include": ["tests/**/*.ts"],
+  "include": [
+    "tests/**/*.ts",
+    "apps/web/src/web-session-storage.ts",
+    "apps/web/src/web-case-presentation.ts"
+  ],
   "references": [
     { "path": "./packages/domain" },
     { "path": "./packages/contracts" },

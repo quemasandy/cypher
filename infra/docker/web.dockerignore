@@ -1,0 +1,6 @@
+# Este archivo reduce el contexto enviado a `docker build`.
+# Su objetivo es mantener la imagen final enfocada en runtime, no en artefactos de depuracion.
+bundle-manifest.json
+apps/web/package.json
+**/*.d.ts
+**/*.map

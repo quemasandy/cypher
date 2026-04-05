@@ -12,11 +12,18 @@
   ],
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "playwright": "^1.59.1",
     "typescript": "^5.0.0"
   },
   "scripts": {
     "build": "tsc -b",
     "demo": "npm run build && node apps/cli/dist/index.js",
-    "test": "npm run build && node --test dist-tests/tests/**/*.test.js"
+    "test": "npm run build && node --test dist-tests/tests/**/*.test.js",
+    "web": "npm run build && node apps/web/dist/server.js",
+    "web:start": "node apps/web/dist/server.js",
+    "web:bundle": "npm run build && node scripts/prepare-web-deploy-bundle.mjs",
+    "web:bundle:start": "node .deploy/web/apps/web/dist/server.js",
+    "web:container:build": "npm run web:bundle && docker build -t cipher-web:local .deploy/web",
+    "web:container:run": "docker run --rm -p 4173:4173 -e HOST=0.0.0.0 -e PORT=4173 cipher-web:local"
   }
 }

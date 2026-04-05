@@ -9,6 +9,7 @@
     { "path": "./packages/application" },
     { "path": "./packages/infra" },
     { "path": "./apps/cli" },
+    { "path": "./apps/web" },
     { "path": "./tsconfig.tests.json" }
   ]
 }

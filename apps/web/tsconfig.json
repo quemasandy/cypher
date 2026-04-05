@@ -1,0 +1,19 @@
+// Este archivo compila el adapter web local del proyecto.
+// Se mantiene como un paquete separado para demostrar que otra interfaz
+// puede consumir los mismos casos de uso sin tocar dominio ni aplicacion.
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../packages/application" },
+    { "path": "../../packages/infra" }
+  ]
+}

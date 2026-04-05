@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cipher Web Adapter</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "@cipher/application": "/packages/application/dist/index.js",
+          "@cipher/contracts": "/packages/contracts/dist/index.js",
+          "@cipher/domain": "/packages/domain/dist/index.js",
+          "@cipher/infra/browser": "/packages/infra/dist/browser.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

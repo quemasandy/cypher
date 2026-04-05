@@ -26,11 +26,23 @@ Traducir la vision y la arquitectura en hitos ejecutables con entregables jugabl
 - Sustituir `InMemoryCaseRepository` por `SQLiteCaseRepository`.
 - Construir `web adapter` basico sobre los mismos casos de uso.
 - Entregable: sesion persistente y demo web local.
+- Estado actual:
+  - `SQLiteCaseRepository` y sesion persistente por CLI ya implementados.
+  - `apps/web` ya expone un adapter web local minimo.
+  - La web ya rehidrata el caso activo desde `localStorage` entre recargas.
 
 ### Fase 5 - Observabilidad y cloud futura
 - Agregar telemetria estructurada.
 - Documentar o implementar despliegue incremental segun prioridad real.
 - Entregable: proyecto listo para exhibicion publica con operabilidad basica.
+- Estado actual:
+  - La CLI persistida ya escribe eventos tecnicos en JSON Lines mediante `StructuredFileTelemetry`.
+  - La traza didactica en memoria sigue visible en CLI y web, pero ahora la CLI tambien deja un rastro durable junto al `SQLite`.
+  - `apps/web` ya expone `GET /healthz`, logs estructurados de arranque/requests y un runbook minimo de despliegue incremental.
+  - `npm run web:bundle` ya prepara un artefacto portable en `.deploy/web/` para arrancar el adapter fuera del repo completo.
+  - `infra/docker` ya define un runtime containerizado generico para ese mismo bundle.
+  - `apps/web` ya quedo cerrada como version local-first final del roadmap actual: briefing guiado, barra de progreso, recomendacion de siguiente paso, reporte textual exportable, fullscreen y rehidratacion durable del caso activo.
+  - Con eso, el roadmap actual ya esta cumplido para la experiencia web local. Cloud, dashboards, exportadores remotos y `apps/api` siguen diferidos hasta que exista una necesidad real fuera del loop local.
 
 ### Principios de priorizacion
 - Cada fase termina con algo jugable o demostrable.

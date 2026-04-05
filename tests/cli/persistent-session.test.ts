@@ -6,16 +6,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import type { StructuredTelemetryRecord } from "@cipher/infra";
 
 const execFileAsync = promisify(execFile);
 
 test("CLI commands can resume the same persisted case across separate processes", async () => {
   const temporaryDirectoryPath = await mkdtemp(join(tmpdir(), "cypher-cli-session-"));
   const databaseFilePath = join(temporaryDirectoryPath, "cases.sqlite");
+  const telemetryFilePath = join(temporaryDirectoryPath, "cases.telemetry.jsonl");
 
   try {
     // Primera ejecucion: abrimos un caso nuevo y extraemos el `caseId` devuelto por la CLI.
@@ -26,6 +28,10 @@ test("CLI commands can resume the same persisted case across separate processes"
     assert.match(startOutput, /^Storage: SQLite/m);
     assert.match(startOutput, /^State: Investigating$/m);
     assert.match(startOutput, /^Current city: Bogota$/m);
+    assert.match(
+      startOutput,
+      new RegExp(`^Structured telemetry file: ${escapeForRegularExpression(telemetryFilePath)}$`, "m")
+    );
 
     // Segunda ejecucion: visitamos la primera locacion pendiente y dejamos visible la ruta.
     const visitOutput = await runCliCommand(["visit", caseId, "--db", databaseFilePath]);
@@ -52,6 +58,20 @@ test("CLI commands can resume the same persisted case across separate processes"
     assert.match(statusOutput, /^Case ID: /m);
     assert.match(statusOutput, /^Current city: Buenos Aires$/m);
     assert.match(statusOutput, /- Bogota -> Buenos Aires \(8h\)/);
+
+    const persistedTelemetryContents = await readFile(telemetryFilePath, "utf8");
+    const structuredTelemetryRecords = parseStructuredTelemetryRecords(persistedTelemetryContents);
+
+    assert.deepEqual(
+      structuredTelemetryRecords.map((structuredTelemetryRecord) => structuredTelemetryRecord.eventName),
+      ["case_started", "location_visited", "city_traveled"]
+    );
+    assert.ok(
+      structuredTelemetryRecords.every(
+        (structuredTelemetryRecord) => structuredTelemetryRecord.source === "cli-persistent"
+      )
+    );
+    assert.equal(structuredTelemetryRecords[0]?.payload.caseId, caseId);
   } finally {
     await rm(temporaryDirectoryPath, { recursive: true, force: true });
   }
@@ -74,4 +94,18 @@ function extractCaseIdFromCliOutput(cliOutput: string): string {
   }
 
   return caseIdMatch[1].trim();
+}
+
+function parseStructuredTelemetryRecords(
+  persistedTelemetryContents: string
+): StructuredTelemetryRecord[] {
+  return persistedTelemetryContents
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((telemetryLine) => JSON.parse(telemetryLine) as StructuredTelemetryRecord);
+}
+
+function escapeForRegularExpression(rawValue: string): string {
+  return rawValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

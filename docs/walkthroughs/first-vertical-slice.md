@@ -1,7 +1,7 @@
 # First Vertical Slice Walkthrough
 
 ## Proposito
-Documentar la primera base de codigo ejecutable de `Cipher`. Este walkthrough explica como se conectan dominio, aplicacion, contratos, infraestructura y CLI para abrir un caso, visitar una locacion, viajar a otra ciudad, emitir una warrant y resolver el caso desde terminal.
+Documentar la primera base de codigo ejecutable de `Cipher`. Este walkthrough explica como se conectan dominio, aplicacion, contratos, infraestructura, CLI y web para abrir un caso, visitar una locacion, viajar a otra ciudad, emitir una warrant y resolver el caso desde adapters locales.
 
 ## Vision general
 El vertical slice implementado recorre un flujo pequeno pero completo:
@@ -27,6 +27,11 @@ Ademas del walkthrough automatico, la CLI ahora expone un modo persistido por co
 - `status` o `resume` vuelve a leer el mismo caso desde disco.
 - `visit`, `travel`, `warrant` y `arrest` aplican exactamente los mismos casos de uso sobre una sesion ya persistida.
 
+Y la web ahora expone un adapter local minimo:
+- `apps/web` levanta un server local y sirve una UI browser-based sobre los mismos casos de uso.
+- La sesion del navegador persiste el aggregate activo en `localStorage` mediante un repositorio browser-safe.
+- Un snapshot pequeno de la UI rehidrata tambien la seleccion de rasgos y la traza visible de eventos/telemetria.
+
 ## Mapa de archivos
 - `packages/domain/src/case.ts`
   - Implementa el aggregate root y concentra la state machine inicial.
@@ -48,10 +53,16 @@ Ademas del walkthrough automatico, la CLI ahora expone un modo persistido por co
   - Define puertos abstractos para generacion, repositorio, aleatoriedad, eventos y telemetria.
 - `packages/infra/src/in-memory-case-repository.ts`
   - Provee persistencia en memoria para demo y tests.
+- `packages/infra/src/local-storage-case-repository.ts`
+  - Provee persistencia local browser-safe sobre `localStorage` usando el mismo mapper de snapshots que `SQLite`.
+- `packages/infra/src/browser-key-value-store.ts`
+  - Define un contrato minimo para no acoplar infraestructura browser-safe al tipo `Storage` del DOM.
 - `packages/infra/src/case-record-serialization.ts`
   - Traduce el aggregate `Case` a snapshots planos y lo rehidrata sin filtrar detalles de storage al dominio.
 - `packages/infra/src/sqlite-case-repository.ts`
   - Provee persistencia local real sobre un archivo `SQLite` y demuestra reemplazo de adapter.
+- `packages/infra/src/browser.ts`
+  - Expone un entrypoint browser-safe para que la UI web no cargue adapters exclusivos de Node.
 - `packages/infra/src/procedural-case-generator.ts`
   - Traduce una `seed` en un `Case` reproducible con validadores pequenos.
 - `packages/infra/src/deterministic-randomness-provider.ts`
@@ -62,6 +73,12 @@ Ademas del walkthrough automatico, la CLI ahora expone un modo persistido por co
   - Cablea dependencias, acepta comandos de demo o sesion persistida y muestra el flujo completo en terminal.
 - `apps/cli/src/cli-arguments.ts`
   - Traduce `argv` a comandos semanticos de CLI sin mezclar parseo con ejecucion.
+- `apps/web/src/app.ts`
+  - Proyecta el estado del caso a una UI local, rehidrata el caso persistido y traduce clicks del navegador a casos de uso.
+- `apps/web/src/web-session-storage.ts`
+  - Guarda solo el cascaron de la sesion web para que una recarga restaure la UI sin duplicar reglas del dominio.
+- `apps/web/src/server.ts`
+  - Sirve HTML, CSS, JS compilado y paquetes compartidos del monorepo para la demo web local.
 
 ## Nota de compilacion
 El source del vertical slice esta escrito en `TypeScript`.
@@ -81,7 +98,7 @@ Cada paquete compila su salida a `dist/` y los tests se emiten a `dist-tests/` d
 Los adapters `in-memory`, `SQLite`, el mapper de snapshots y el generador procedural viven en infraestructura porque resuelven side effects concretos: construir el caso, guardar, publicar, rehidratar y registrar.
 
 ### Interface
-La CLI vive en `apps/cli` porque es un adapter de entrada. No modifica entidades directamente; solo invoca casos de uso.
+La CLI y la web viven en `apps/*` porque son adapters de entrada. Ninguna modifica entidades directamente; ambas invocan casos de uso.
 
 ## Como leer el codigo
 1. Empieza por `apps/cli/src/index.ts` para ver el recorrido completo.
@@ -91,7 +108,8 @@ La CLI vive en `apps/cli` porque es un adapter de entrada. No modifica entidades
 5. Termina en `packages/infra/src/*` para ver como se implementan esos puertos en esta fase.
 
 ## Que todavia no existe
-- `Web adapter`.
+- `API adapter`.
+- Sincronizacion remota o multi-dispositivo.
 
 ## Por que este slice es util
-Aunque pequeno, este slice ya prueba una afirmacion arquitectonica importante: el dominio puede mutar y la aplicacion puede orquestarlo sin acoplarse ni a la CLI ni a un repositorio concreto. El mismo flujo hoy puede persistirse en memoria o en `SQLite`, y el aggregate vuelve a levantarse como objeto de dominio real en ambos casos. La CLI, ademas, ya puede reanudar una sesion real entre procesos separados usando el mismo archivo `SQLite`, lo que convierte la persistencia en una capacidad visible para el usuario y no solo en una prueba de infraestructura. Ahora, ademas, el caso incluye dos filtros clave de conocimiento publico: la UI solo ve rasgos descubiertos y solo ve destinos respaldados por pistas de ruta o por historial de viaje. Eso vuelve mas honesto tanto el loop de deduccion como el de navegacion antes de expandirlos con mayor variedad de casos.
+Aunque pequeno, este slice ya prueba una afirmacion arquitectonica importante: el dominio puede mutar y la aplicacion puede orquestarlo sin acoplarse ni a un repositorio concreto ni a una sola interfaz. El mismo flujo hoy puede persistirse en memoria, en `SQLite` o en `localStorage`, puede jugarse por CLI o por web local, y el aggregate vuelve a levantarse como objeto de dominio real cuando el adapter lo necesita. La CLI, ademas, ya puede reanudar una sesion real entre procesos separados usando el mismo archivo `SQLite`, mientras que la web ahora demuestra una segunda superficie local con persistencia durable entre recargas usando adapters browser-safe. Ahora, ademas, el caso incluye dos filtros clave de conocimiento publico: la UI solo ve rasgos descubiertos y solo ve destinos respaldados por pistas de ruta o por historial de viaje. Eso vuelve mas honesto tanto el loop de deduccion como el de navegacion antes de expandirlos con mayor variedad de casos.

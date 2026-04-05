@@ -16,7 +16,7 @@ graph TD
 ```mermaid
 graph TD
     CLI["apps/cli"] --> APP["packages/application"]
-    WEB["apps/web (future)"] --> APP
+    WEB["apps/web"] --> APP
     API["apps/api (future)"] --> APP
     APP --> DOMAIN["packages/domain"]
     APP --> PORTS["Ports"]
@@ -44,8 +44,9 @@ graph LR
 ### Diagrama de evolucion tecnica
 ```mermaid
 flowchart LR
-    A["MVP: CLI + InMemory"] --> B["Phase 2: CLI/Web + SQLite"]
-    B --> C["Phase 3: API/Web + Cloud Adapters"]
+    A["MVP: CLI + InMemory"] --> B["CLI + SQLite + Web Local"]
+    B --> C["Web Bundle + Generic Container Runtime"]
+    C --> D["API/Web + Cloud Adapters"]
 ```
 
 ## Implicaciones

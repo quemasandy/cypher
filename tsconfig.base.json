@@ -20,7 +20,8 @@
       "@cipher/application": ["packages/application/src/index.ts"],
       "@cipher/contracts": ["packages/contracts/src/index.ts"],
       "@cipher/domain": ["packages/domain/src/index.ts"],
-      "@cipher/infra": ["packages/infra/src/index.ts"]
+      "@cipher/infra": ["packages/infra/src/index.ts"],
+      "@cipher/infra/browser": ["packages/infra/src/browser.ts"]
     }
   }
 }

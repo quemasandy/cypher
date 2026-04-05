@@ -35,7 +35,7 @@ Registrar riesgos tecnicos y de producto que pueden comprometer claridad, alcanc
 - Formula exacta de costo de viaje: geografica real vs tiers abstractos.
 - Cantidad inicial de ciudades y locaciones del pool MVP.
 - Alcance del `apps/api` en la primera iteracion web.
-- Nivel de detalle de telemetria a instrumentar antes del deploy publico.
+- Cuando conviene promover la telemetria local en JSONL a un adapter remoto o a dashboards.
 
 ### Criterios para cerrar una open question
 - Debe afectar una interfaz, una invariante o una decision de roadmap.
